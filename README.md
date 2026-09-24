@@ -133,6 +133,7 @@ menu.add_checkbox("Delta V2", "Radar", "v4_radar_rotate", "Rotate with camera", 
 
 menu.add_group("Delta V2", "Misc")
 menu.add_checkbox("Delta V2", "Misc", "v4_hitmarker", "Hitmarker", true)
+menu.add_checkbox("Delta V2", "Misc", "v4_nograss", "No Grass", false)
 
 menu.add_group("Delta V2", "Config")
 
@@ -432,6 +433,7 @@ local claymore_points = {}
 local boss_cached = { estonia = {}, city13 = {} }
 local floor_calc = math.floor
 local cached_players_frame = {}
+local original_grass_length = nil
 
 local CAR_NAMES = {
     "uaz", "vaz", "vaz2108", "vaz-2108", "niva", "lada", "kamaz", "gaz", "zil",
@@ -984,6 +986,7 @@ local function refresh_settings()
     S.radar_rotate    = m_get("v4_radar_rotate")
 
     S.hitmarker       = m_get("v4_hitmarker")
+    S.nograss         = m_get("v4_nograss")
 end
 
 local LOOT_CATEGORIES = {
@@ -992,8 +995,14 @@ local LOOT_CATEGORIES = {
         "Motorcycle","Head Mount","SSH-68","Tanker","6B27","UNO helmet","TOR-S","TORS",
         "6B47","ZSh-1-2M","Fast MT","Crown","Altyn","Altyn Helmet","Helmet",
         "Night Vision Goggles 9","NightVisionGoggles",
+        "Low Cut Visor","LowCutVisor",
         "Spartan Tech Titan Shield","SpartanTech",
+        "Fast MT Visor","FastMTVisor",
         "Quad Night Vision Goggles","QuadNightVision",
+        "Altyn Visor","AltynVisor",
+        "Maska Visor","MaskaVisor",
+        "ZSh-1-2M Visor","ZShVisor","ZSh-1-2MVisor",
+        "Motorcycle Helmet Visor","MotorcycleVisor","MotorcycleHelmetVisor",
         "GP-5","GP-7","Gas Mask","Balaclava","SewnMask",
         "Bandolier","Smersh","6B2","Uno Vest","UNOVest","6B23","Concealed Vest",
         "Kora Kulon","Korund","6B5","JPC","Pantsir","Scav King","6B45","6B43","6B46",
@@ -1006,7 +1015,7 @@ local LOOT_CATEGORIES = {
         "Knee Pads","KneePads","KneePad",
         "Combat Gloves","CombatGloves","Hand Wraps","HandWraps","Gloves","Glove",
     },
-    valuable = {"GPU","Gold","FlareGun","SPSh44","GoldWatch","GoldTicket","Ticket","Mag556Rnd100","Reapir","SOCOM556","RepairKit","Intel","Bitcoin","LEDX","GoldSkull","SolterStatue","MPSU","CPU"},
+    valuable = {"GPU","Gold","FlareGun","SPSh44","GoldWatch","GoldTicket","Ticket","Mag556Rnd100","Reapir","SOCOM556","RepairKit","Intel","Bitcoin","Key","BlueCard","OrangeCard","AA2","AABattery","AI2","Case","LEDX","GoldSkull","SolterStatue","MPSU","CPU"},
     med = {"Medkit","Bandage","Splint","Painkiller","Pill","Salewa","Augmentin","IFAK","Car","Surv12","MedBag","Surgical"},
     ammo = {"Ammo","Round","Mag","Bullet","762x","556x","9x19","9x39","12ga"},
 }
@@ -1030,10 +1039,7 @@ local BLACKLIST = {
     "clothingmask","clothingheadwear","clothinggloves",
     "clothingshirt","clothingpants","clothingsack",
     "clothingbackpack","clothinglegarmor","clothingchestrig",
-    "hair",
-    "visor",
-    "oilcan",
-    "suppressor",
+    "hair"
 }
 
 local VALUE_BLACKLIST = {
@@ -1101,8 +1107,7 @@ local loot_items = {}
 
 local function scan_loot()
     loot_items = {}
-    if not folders.drops then return end
-    local ok, children = pcall(function() return folders.drops:get_children() end)
+    if not folders.drops then return end    local ok, children = pcall(function() return folders.drops:get_children() end)
     if not ok or not children then return end
     local function process(model)
         if model.class_name ~= "Model" or model.name == "" then return end
@@ -1884,6 +1889,31 @@ local function target_still_valid(t)
     return false
 end
 
+local function target_in_fov(t, scx, scy)
+    if not t then return false end
+    local bx, by, bvis
+    if t.kind == "player" then
+        local p = t.entity
+        if not p then return false end
+        if t.bone_name == "Head" and p.head_position then
+            bx, by, bvis = draw.world_to_screen(p.head_position.x, p.head_position.y, p.head_position.z)
+        else
+            bx, by, bvis = p:GetBoneScreen(t.bone_name)
+        end
+    elseif t.kind == "npc" then
+        local n = t.entity
+        if not n or not n.parts or not n.parts[t.bone_name] or not n.parts[t.bone_name].part then
+            return false
+        end
+        local pos = n.parts[t.bone_name].part.position
+        if not pos then return false end
+        bx, by, bvis = draw.world_to_screen(pos.x, pos.y, pos.z)
+    end
+    if not bvis then return false end
+    local dx, dy = bx - scx, by - scy
+    return sqrt(dx*dx + dy*dy) <= S.aim_fov
+end
+
 local function pick_target(scx, scy)
     local best_fov = S.aim_fov
     local best = nil
@@ -1905,7 +1935,8 @@ local function pick_target(scx, scy)
             local p = players[i]
             if p and p.is_valid and p.is_alive and not p.is_local then
                 local skip = false
-                if S.player_team and p.has_team and local_team and p.team == local_team then skip = true end                if not skip then
+                if S.player_team and p.has_team and local_team and p.team == local_team then skip = true end
+                if not skip then
                     local bx, by, bvis
                     if bone_name == "Head" and p.head_position then
                         bx, by, bvis = draw.world_to_screen(p.head_position.x, p.head_position.y, p.head_position.z)
@@ -2054,6 +2085,9 @@ local function run_aimbot()
             lock_was_down = true
         end
         if locked_target and not target_still_valid(locked_target) then
+            locked_target = nil
+        end
+        if locked_target and not target_in_fov(locked_target, scx, scy) then
             locked_target = nil
         end
         if not locked_target then
@@ -2706,6 +2740,23 @@ local function draw_hitmarker()
     end
 end
 
+local function apply_misc()
+    if S.nograss then
+        if original_grass_length == nil then
+            local ok, v = pcall(function() return terrain.GetGrassLength() end)
+            if ok and v then
+                original_grass_length = v
+            end
+        end
+        pcall(function() terrain.SetGrassLength(-1) end)
+        pcall(function() terrain.SetGrassLength(0) end)
+    else
+        if original_grass_length ~= nil then
+            pcall(function() terrain.SetGrassLength(original_grass_length) end)
+        end
+    end
+end
+
 local SAVE_ITEMS = {
     {"v4_player_enabled","bool"},{"v4_player_box","bool",true},{"v4_player_health","bool"},
     {"v4_player_name","bool",true},{"v4_player_dist","bool",true},{"v4_player_skeleton","bool"},
@@ -2745,7 +2796,7 @@ local SAVE_ITEMS = {
     {"v4_hud_dist","bool"},{"v4_hud_icons","bool"},{"v4_hud_icon_size","int"},
     {"v4_hud_range","int"},{"v4_hud_offset_y","int"},
     {"v4_radar_enabled","bool"},{"v4_radar_size","int"},{"v4_radar_range","int"},{"v4_radar_rotate","bool"},
-    {"v4_hitmarker","bool"},
+    {"v4_hitmarker","bool"},{"v4_nograss","bool"},
 }
 
 local function save_config()
@@ -2767,7 +2818,7 @@ local function save_config()
             if item[4] then f:write(id .. "_key=" .. tostring(m_key(id)) .. "\n") end
         end
         f:close()
-        print("[V2.3.2] Config salvo")
+        print("[V2.6.0] Config salvo")
     end)
 end
 
@@ -2795,7 +2846,7 @@ local function load_config()
                 pcall(function() menu.set_key(id, tonumber(data[id.."_key"]) or 0) end)
             end
         end
-        print("[V2.3.2] Config carregado")
+        print("[V2.6.0] Config carregado")
     end)
 end
 
@@ -2837,6 +2888,7 @@ function on_frame()
     draw_inventory_panel()
     draw_radar()
     draw_hitmarker()
+    apply_misc()
 end
 
 refresh_folders()
