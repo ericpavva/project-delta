@@ -250,7 +250,8 @@ local ITEM_ICONS = {
 
     ["RPG7"] = "rpg7.png",
     ["TFZ0"] = "tfz0.png",
-    ["TFZ98S"] = "tfz0.png",
+    ["TFZ98S"] = "tfz98.png",
+    ["TFZ98"] = "tfz98.png",
     ["R700"] = "r700.png",
     ["Saiga"] = "saiga.png",
     ["IZH81"] = "izh81.png",
@@ -319,6 +320,10 @@ local ITEM_NAME_MAP = {
     ["6B43"] = "6B45",
     ["6b43"] = "6B45",
     ["6b45"] = "6B45",
+    ["TFZ98"] = "TFZ98S",
+    ["tfz98"] = "TFZ98S",
+    ["tfz98s"] = "TFZ98S",
+    ["TFZ98s"] = "TFZ98S",
 }
 
 local SLOT_NAMES = {
@@ -449,12 +454,74 @@ local function is_car_name(name)
     return false
 end
 
-local function find_car_pos(model)
-    local part = model:find_first_child_of_class("BasePart")
-    if part and part.position then return part.position end
-    local desc = model:find_first_descendant_of_class("BasePart")
-    if desc and desc.position then return desc.position end
-    return nil
+local CAR_CHECK_CACHE = {}
+
+local function is_interactive_car(model, children)
+    if not model then return false end
+
+    local addr = nil
+    pcall(function() addr = model.address end)
+    if addr and CAR_CHECK_CACHE[addr] ~= nil then
+        return CAR_CHECK_CACHE[addr]
+    end
+
+    if model.class_name ~= "Model" then
+        if addr then CAR_CHECK_CACHE[addr] = false end
+        return false
+    end
+
+    if not children then
+        local ok_ch, ch = pcall(function() return model:get_children() end)
+        if not ok_ch or not ch then
+            if addr then CAR_CHECK_CACHE[addr] = false end
+            return false
+        end
+        children = ch
+    end
+
+    local n_children = #children
+    if n_children < 3 then
+        if addr then CAR_CHECK_CACHE[addr] = false end
+        return false
+    end
+
+    local pp = nil
+    pcall(function() pp = model.primary_part end)
+    if not pp then
+        if addr then CAR_CHECK_CACHE[addr] = false end
+        return false
+    end
+
+    local has_seat = false
+    local has_wheel = false
+    local has_engine = false
+    local wheel_count = 0
+
+    for i = 1, n_children do
+        local c = children[i]
+        if c then
+            local ccn = c.class_name
+            if ccn == "VehicleSeat" or ccn == "Seat" then
+                has_seat = true
+            else
+                local cn = c.name
+                if cn then
+                    local cl = cn:lower()
+                    if cl:find("wheel", 1, true) then
+                        has_wheel = true
+                        wheel_count = wheel_count + 1
+                    end
+                    if not has_engine and cl:find("engine", 1, true) then
+                        has_engine = true
+                    end
+                end
+            end
+        end
+    end
+
+    local result = has_seat or (has_wheel and wheel_count >= 3) or (has_wheel and has_engine)
+    if addr then CAR_CHECK_CACHE[addr] = result end
+    return result
 end
 
 local function is_valid(inst)
@@ -470,7 +537,7 @@ end
 
 local function refresh_folders()
     local now = utility.get_tick_count()
-    if folders.ws and (now - folders.last) < 700 then return true end
+    if folders.ws and (now - folders.last) < 2000 then return true end
     folders.last = now
     local ws = game.workspace
     if not ws then return false end
@@ -674,15 +741,32 @@ local function scan_cars()
     if not ws then return end
 
     local seen = {}
-    local function add_car(model)
+
+    local function try_car(model)
         if not model or model.class_name ~= "Model" then return end
-        local addr = model.address
+        local addr = nil
+        pcall(function() addr = model.address end)
         if addr and seen[addr] then return end
-        local pos = find_car_pos(model)
-        if not pos then return end
         if addr then seen[addr] = true end
-        local part = model:find_first_child_of_class("BasePart")
-            or model:find_first_descendant_of_class("BasePart")
+
+        local ok_ch, children = pcall(function() return model:get_children() end)
+        if not ok_ch or not children then return end
+
+        if not is_interactive_car(model, children) then return end
+
+        local part = nil
+        for i = 1, #children do
+            local c = children[i]
+            if c and c:is_a("BasePart") then
+                part = c
+                break
+            end
+        end
+        if not part then
+            part = model:find_first_descendant_of_class("BasePart")
+        end
+        if not part or not part.position then return end
+
         car_points[#car_points+1] = {name = "Car", part = part, model = model}
     end
 
@@ -690,21 +774,18 @@ local function scan_cars()
     if veh then
         local ok, kids = pcall(function() return veh:get_children() end)
         if ok and kids then
-            for i=1,#kids do
-                local c = kids[i]
-                if c.class_name == "Model" then
-                    add_car(c)
-                end
+            for i = 1, #kids do
+                try_car(kids[i])
             end
         end
     end
 
     local ok2, ws_kids = pcall(function() return ws:get_children() end)
     if ok2 and ws_kids then
-        for i=1,#ws_kids do
+        for i = 1, #ws_kids do
             local c = ws_kids[i]
-            if c.class_name == "Model" and is_car_name(c.name) then
-                add_car(c)
+            if c and c.class_name == "Model" and is_car_name(c.name) then
+                try_car(c)
             end
         end
     end
@@ -1107,7 +1188,8 @@ local loot_items = {}
 
 local function scan_loot()
     loot_items = {}
-    if not folders.drops then return end    local ok, children = pcall(function() return folders.drops:get_children() end)
+    if not folders.drops then return end
+    local ok, children = pcall(function() return folders.drops:get_children() end)
     if not ok or not children then return end
     local function process(model)
         if model.class_name ~= "Model" or model.name == "" then return end
@@ -1150,7 +1232,8 @@ local function draw_player_esp()
                     local dist = dist3(pos.x,pos.y,pos.z, world.cam_x,world.cam_y,world.cam_z)
                     if dist <= range_studs then
                         local b = get_bounds_from_player(p)
-                        if b then                            local mid = b.x + b.w * 0.5
+                        if b then
+                            local mid = b.x + b.w * 0.5
                             if S.player_box then draw.box(b.x, b.y, b.w, b.h, S.player_box_col, 0) end
                             if S.player_hp then draw.health_bar(b.x - 6, b.y, b.h, p.health, p.max_health) end
                             local y_off = b.y - 16
@@ -1337,6 +1420,9 @@ end
 local function draw_loot_esp()
     if not S.loot or #loot_items == 0 then return end
     local range_studs = S.loot_range_studs
+    local any_cat = S.loot_weapons or S.loot_armor or S.loot_valuables
+                    or S.loot_meds or S.loot_ammo or S.loot_other
+    if not any_cat then return end
     for i=1,#loot_items do
         local entry = loot_items[i]
         local part = entry.part
@@ -1526,8 +1612,7 @@ local function draw_boss_tracker()
             end
         else
             x = mx - BOSS_HUD_DRAG.ox
-            y = my - BOSS_HUD_DRAG.oy
-            BOSS_HUD_POS.x = x
+            y = my - BOSS_HUD_DRAG.oy            BOSS_HUD_POS.x = x
             BOSS_HUD_POS.y = y
         end
     else
@@ -1616,6 +1701,19 @@ for _, it in ipairs(LT_TRACKED_ITEMS) do
 end
 
 local cached_players = {}
+local rs_players_cache = nil
+local rs_players_cache_last = 0
+
+local function get_rs_players()
+    local now = utility.get_tick_count()
+    if rs_players_cache and (now - rs_players_cache_last) < 5000 and is_valid(rs_players_cache) then
+        return rs_players_cache
+    end
+    local rep = game.replicated_storage
+    rs_players_cache = rep and rep:find_first_child("Players") or nil
+    rs_players_cache_last = now
+    return rs_players_cache
+end
 
 local function item_is_tracked(item)
     if type(item) ~= "string" or item == "" then return false end
@@ -1626,13 +1724,49 @@ local function item_is_tracked(item)
     return false
 end
 
+local function get_weapon_attachments(player_obj)
+    if not player_obj then return {} end
+    local ok, char = pcall(function() return player_obj.character end)
+    if not ok or not char then return {} end
+    local ok2, holding = pcall(function() return char:find_first_child("Holding") end)
+    if not ok2 or not holding then return {} end
+    local ok3, weapon = pcall(function() return holding.value end)
+    if not ok3 or not weapon then return {} end
+
+    local attachments = {}
+    local ok4, kids = pcall(function() return weapon:get_children() end)
+    if ok4 and kids then
+        for i = 1, #kids do
+            local k = kids[i]
+            if k then
+                local n = pcall(function() return k.name end) and k.name or ""
+                if n ~= "" and item_is_tracked(n) then
+                    attachments[#attachments+1] = n
+                end
+                local ok5, sub = pcall(function() return k:get_children() end)
+                if ok5 and sub then
+                    for j = 1, #sub do
+                        local s = sub[j]
+                        if s then
+                            local sn = pcall(function() return s.name end) and s.name or ""
+                            if sn ~= "" and item_is_tracked(sn) then
+                                attachments[#attachments+1] = sn
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return attachments
+end
+
 local function scan_players_inv()
     if not S.lt then cached_players = {} return end
     local result = {}
     local players = entity.get_players()
     if not players then cached_players = result return end
-    local rep = game.replicated_storage
-    local rep_players = rep and rep:find_first_child("Players")
+    local rep_players = get_rs_players()
     for i = 1, #players do
         local p = players[i]
         if p and p.is_valid and not p.is_local then
@@ -1644,39 +1778,11 @@ local function scan_players_inv()
             local count = 0
 
             local function add(name)
-                if count >= 60 then return end
+                if count >= 40 then return end
                 if name and name ~= "" and not seen[name] then
                     seen[name] = true
                     inv[#inv+1] = name
                     count = count + 1
-                end
-            end
-
-            local function scan_folder(folder, depth)
-                if not folder then return end
-                if depth > 2 then return end
-                local ok2, items = pcall(function() return folder:get_children() end)
-                if not ok2 or not items then return end
-                for j = 1, #items do
-                    if count >= 60 then return end
-                    local item = items[j]
-                    if type(item) == "userdata" or type(item) == "table" then
-                        local nm = item.name
-                        if type(nm) == "string" and nm ~= "" then
-                            if item.class_name == "ObjectValue" then
-                                local resolved = resolve_item_name(item)
-                                if resolved then add(resolved) else add(nm) end
-                            else
-                                add(nm)
-                            end
-                        end
-                        if depth < 2 then
-                            local ok3, children = pcall(function() return item:get_children() end)
-                            if ok3 and children and #children > 0 and #children < 50 then
-                                scan_folder(item, depth + 1)
-                            end
-                        end
-                    end
                 end
             end
 
@@ -1693,6 +1799,10 @@ local function scan_players_inv()
                         end
                     end
                 end
+                local attachments = get_weapon_attachments(p)
+                for k = 1, #attachments do
+                    add(attachments[k])
+                end
             end
 
             if rep_players then
@@ -1701,15 +1811,24 @@ local function scan_players_inv()
                     data = rep_players:find_first_child(puid)
                 end
                 if data then
-                    scan_folder(data:find_first_child("Inventory"), 0)
-                    if count < 60 then
-                        scan_folder(data:find_first_child("VaultStorage"), 0)
+                    local inv_folder = data:find_first_child("Inventory")
+                    if inv_folder then
+                        local ok, kids = pcall(function() return inv_folder:get_children() end)
+                        if ok and kids then
+                            for j = 1, #kids do
+                                if count >= 40 then break end
+                                local it = kids[j]
+                                if it then
+                                    local nm = it.name
+                                    if type(nm) == "string" and nm ~= "" then
+                                        local resolved = resolve_item_name(it)
+                                        if resolved then add(resolved) else add(nm) end
+                                    end
+                                end
+                            end
+                        end
                     end
                 end
-            end
-
-            if char and count < 60 then
-                scan_folder(char:find_first_child("Clothing"), 0)
             end
 
             result[#result+1] = {
@@ -2126,8 +2245,7 @@ local function scan_player_inventories()
     local result = {}
     local players = entity.get_players()
     if not players then return end
-    local rep = game.replicated_storage
-    local rep_players = rep and rep:find_first_child("Players")
+    local rep_players = get_rs_players()
     for i = 1, #players do
         local p = players[i]
         if p and p.is_valid and not p.is_local then
@@ -2142,63 +2260,84 @@ local function scan_player_inventories()
                 end
             end
 
-            local function scan_folder(folder, depth)
-                if not folder then return end
-                if depth > 2 then return end
-                local ok2, kids = pcall(function() return folder:get_children() end)
-                if not ok2 or not kids then return end
-                for j = 1, #kids do
-                    local item = kids[j]
-                    if type(item) == "userdata" or type(item) == "table" then
-                        local nm = item.name
-                        if type(nm) == "string" and nm ~= "" then
-                            if item.class_name == "ObjectValue" then
-                                local resolved = resolve_item_name(item)
-                                if resolved then add(resolved) else add(nm) end
-                            else
-                                add(nm)
-                            end
-                        end
-                        if depth < 2 then
-                            local ok3, children = pcall(function() return item:get_children() end)
-                            if ok3 and children and #children > 0 and #children < 50 then
-                                scan_folder(item, depth + 1)
-                            end
-                        end
-                    end
-                end
-            end
-
             if rep_players then
                 local data = rep_players:find_first_child(pname)
                 if not data and puid ~= "" then
                     data = rep_players:find_first_child(puid)
                 end
                 if data then
-                    scan_folder(data:find_first_child("Inventory"), 0)
-                    scan_folder(data:find_first_child("VaultStorage"), 0)
+                    local inv_f = data:find_first_child("Inventory")
+                    if inv_f then
+                        local ok, kids = pcall(function() return inv_f:get_children() end)
+                        if ok and kids then
+                            for j = 1, #kids do
+                                local it = kids[j]
+                                if it then
+                                    local nm = it.name
+                                    if type(nm) == "string" and nm ~= "" then
+                                        local resolved = resolve_item_name(it)
+                                        if resolved then add(resolved) else add(nm) end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    local vault_f = data:find_first_child("VaultStorage")
+                    if vault_f then
+                        local ok, kids = pcall(function() return vault_f:get_children() end)
+                        if ok and kids then
+                            for j = 1, #kids do
+                                local it = kids[j]
+                                if it then
+                                    local nm = it.name
+                                    if type(nm) == "string" and nm ~= "" then
+                                        local resolved = resolve_item_name(it)
+                                        if resolved then add(resolved) else add(nm) end
+                                    end
+                                end
+                            end
+                        end
+                    end
                 end
             end
 
             local char = p.character
             if char then
-                scan_folder(char:find_first_child("Clothing"), 0)
+                local clothing = char:find_first_child("Clothing")
+                if clothing then
+                    local ok, kids = pcall(function() return clothing:get_children() end)
+                    if ok and kids then
+                        for j=1,#kids do
+                            local slot = kids[j]
+                            if slot then
+                                local nm = slot.name
+                                if type(nm) == "string" and nm ~= "" then
+                                    local resolved = resolve_item_name(slot)
+                                    if resolved then add(resolved) end
+                                end
+                            end
+                        end
+                    end
+                end
                 local ok, ch = pcall(function() return char:get_children() end)
                 if ok and ch then
                     for j=1,#ch do
                         local c = ch[j]
-                        if c.class_name == "Model" then
+                        if c and c.class_name == "Model" then
                             local cn = c.name or ""
                             if cn ~= "" and not cn:find("Holstered") and not cn:find("Wasteland") and not cn:find("Summer") and not cn:find("Civilian") then
                                 cn = ITEM_NAME_MAP[cn] or cn
                                 add(cn)
                             end
-                        end
-                        if c.class_name == "Accessory" then
+                        elseif c and c.class_name == "Accessory" then
                             local n = resolve_item_name(c)
                             if n then add(n) end
                         end
                     end
+                end
+                local attachments = get_weapon_attachments(p)
+                for k = 1, #attachments do
+                    add(attachments[k])
                 end
             end
 
@@ -2818,7 +2957,7 @@ local function save_config()
             if item[4] then f:write(id .. "_key=" .. tostring(m_key(id)) .. "\n") end
         end
         f:close()
-        print("[V2.6.0] Config salvo")
+        print("[V2.7.6] Config salvo")
     end)
 end
 
@@ -2846,49 +2985,53 @@ local function load_config()
                 pcall(function() menu.set_key(id, tonumber(data[id.."_key"]) or 0) end)
             end
         end
-        print("[V2.6.0] Config carregado")
+        print("[V2.7.6] Config carregado")
     end)
 end
 
 menu.add_button("Delta V2", "Config", "v4_save_btn", "Save Config", save_config)
 menu.add_button("Delta V2", "Config", "v4_load_btn", "Load Config", load_config)
 
-thread.create(update_camera, 16)
-thread.create(function() refresh_folders() scan_npcs() end, 800)
-thread.create(scan_loot, 800)
-thread.create(scan_corpses, 1800)
-thread.create(scan_exits, 2500)
-thread.create(scan_cars, 1200)
-thread.create(scan_bosses, 1200)
-thread.create(scan_players_inv, 800)
-thread.create(lt_scan, 800)
-thread.create(scan_player_inventories, 800)
-thread.create(scan_containers, 2500)
-thread.create(scan_quests, 2500)
-thread.create(scan_claymores, 2500)
-thread.create(refresh_settings, 100)
+thread.create(update_camera, 33)
+thread.create(function() refresh_folders() scan_npcs() end, 1500)
+thread.create(scan_loot, 1500)
+thread.create(scan_corpses, 3000)
+thread.create(scan_exits, 5000)
+thread.create(function()
+    if not S.car then return end
+    scan_cars()
+end, 5000)
+thread.create(scan_bosses, 2500)
+thread.create(scan_players_inv, 2500)
+thread.create(lt_scan, 2000)
+thread.create(scan_player_inventories, 2000)
+thread.create(scan_containers, 4000)
+thread.create(scan_quests, 4000)
+thread.create(scan_claymores, 4000)
+thread.create(refresh_settings, 500)
 
 function on_frame()
     cached_players_frame = entity.get_players() or {}
     update_camera()
-    draw_player_esp()
-    draw_npc_esp()
-    draw_car_esp()
-    draw_exit_esp()
-    draw_corpse_esp()
-    draw_loot_esp()
-    draw_container_esp()
-    draw_quest_esp()
-    draw_claymore_esp()
-    draw_boss_tracker()
-    draw_loot_tracker()
-    draw_chams()
-    run_aimbot()
-    draw_target_hud()
-    draw_inventory_panel()
-    draw_radar()
-    draw_hitmarker()
-    apply_misc()
+
+    if S.player then draw_player_esp() end
+    if S.npc then draw_npc_esp() end
+    if S.car then draw_car_esp() end
+    if S.exit_enabled then draw_exit_esp() end
+    if S.corpse then draw_corpse_esp() end
+    if S.loot then draw_loot_esp() end
+    if S.container then draw_container_esp() end
+    if S.quest then draw_quest_esp() end
+    if S.claymore then draw_claymore_esp() end
+    if S.boss then draw_boss_tracker() end
+    if S.lt then draw_loot_tracker() end
+    if S.chams then draw_chams() end
+    if S.aim then run_aimbot() end
+    if S.hud then draw_target_hud() end
+    if S.inv then draw_inventory_panel() end
+    if S.radar then draw_radar() end
+    if S.hitmarker then draw_hitmarker() end
+    if S.nograss then apply_misc() end
 end
 
 refresh_folders()
