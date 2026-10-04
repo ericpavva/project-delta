@@ -1,7 +1,6 @@
 do
 
-
-local VERSION = "2.8.3"
+local VERSION = "2.8.4"
 
 local UI = {}
 UI.__index = UI
@@ -26,7 +25,7 @@ UI.COLORS = {}
 for k, v in pairs(UI.COLORS_DEFAULT) do UI.COLORS[k] = {v[1], v[2], v[3], v[4]} end
 
 UI.state = {
-    open = false,
+    open = true,
     x = 100, y = 40, w = 820, h = 950,
     dragging = false, drag_ox = 0, drag_oy = 0,
     active_tab = 1,
@@ -761,6 +760,10 @@ local function process_hotkey_listening(self)
     for vk = 1, 254 do
         if vk ~= 0x01 and key_down(vk) then
             self.state.keys[self.state.listening_key] = vk
+            if self.state.listening_key == "v4_ui_toggle_key" then
+                self.state.toggle_key = vk
+                _prev_toggle = true
+            end
             self.state.listening_key = nil
             break
         end
@@ -788,6 +791,10 @@ local function process_toggle(self)
     local toggle_key = self.state.toggle_key
     if not toggle_key or toggle_key == 0 then
         _prev_toggle = false
+        return
+    end
+    if self.state.listening_key == "v4_ui_toggle_key" then
+        _prev_toggle = key_down(toggle_key)
         return
     end
     local kd = key_down(toggle_key)
@@ -1029,6 +1036,7 @@ menu.add_checkbox("Misc", "Misc", "v4_nograss", "No Grass", false)
 
 -- ============ CONFIG ============
 menu.add_group("Config", "UI — Colors")
+menu.add_hotkey("Config", "UI — Colors", "v4_ui_toggle_key", "Menu Toggle Key", 0x2D)
 menu.add_colorpicker("Config", "UI — Colors", "v4_ui_accent", "Accent Color", {0.25, 0.60, 1.00, 1.00})
 menu.add_slider_int("Config", "UI — Colors", "v4_ui_opacity", "UI Opacity (%)", 30, 100, 96)
 menu.add_slider_int("Config", "UI — Colors", "v4_ui_border_glow", "Border Glow (%)", 0, 200, 100)
@@ -1046,6 +1054,11 @@ menu.add_button("Config", "UI — Colors", "v4_ui_reset", "Reset Theme", functio
     base_ui.state.values["v4_ui_border_glow"] = 100
     base_ui.state.values["v4_ui_w"] = 820
     base_ui.state.values["v4_ui_h"] = 950
+end)
+
+menu.set_callback("v4_ui_toggle_key", function(k)
+    base_ui.state.toggle_key = k
+    _prev_toggle = false
 end)
 
 menu.set_callback("v4_ui_accent", function(c)
@@ -2240,7 +2253,8 @@ local function draw_container_esp()
                         draw.text(sx - tw*0.5, sy, txt, S.container_col, 13)
                         if S.container_contents and entry.contents then
                             local ly = sy + 14
-                            for j=1,#entry.contents do                                local itxt = entry.contents[j]
+                            for j=1,#entry.contents do
+                                local itxt = entry.contents[j]
                                 local itw = draw.get_text_size(itxt, 11)
                                 draw.text(sx - itw*0.5, ly, itxt, {0.7,0.7,0.7,1}, 11)
                                 ly = ly + 12
@@ -2941,8 +2955,7 @@ local function scan_player_inventories()
             local function add(name)
                 if name and name ~= "" and not seen[name] then
                     seen[name] = true
-                    items[#items+1] = name
-                end
+                    items[#items+1] = name                end
             end
             if rep_players then
                 local data = rep_players:find_first_child(pname)
@@ -3254,7 +3267,7 @@ local function get_equipped_slot(player_obj, slot_name)
 end
 
 -- =========================================================
--- CHAMS + VISIBILITY (com cache + FOV filter)
+-- CHAMS + VISIBILITY (cache + FOV filter)
 -- =========================================================
 local chams_hook_active = false
 local last_chams_style = -1
@@ -3470,7 +3483,7 @@ local function draw_target_hud()
 end
 
 -- =========================================================
--- CHAMS DRAW (usa o cache + fov filter)
+-- CHAMS DRAW
 -- =========================================================
 local chams_cleanup_counter = 0
 
@@ -3725,6 +3738,7 @@ local SAVE_ITEMS = {
     {"v4_radar_enabled","bool"},{"v4_radar_size","int"},{"v4_radar_range","int"},{"v4_radar_rotate","bool"},
     {"v4_hitmarker","bool"},{"v4_nograss","bool"},
     {"v4_ui_opacity","int"},{"v4_ui_border_glow","int"},{"v4_ui_w","int"},{"v4_ui_h","int"},
+    {"v4_ui_toggle_key","key"},
 }
 
 local function save_config()
@@ -3873,5 +3887,14 @@ scan_claymores()
 update_camera()
 refresh_settings()
 load_config()
+
+local boot_toggle_key = m_key("v4_ui_toggle_key")
+if boot_toggle_key and boot_toggle_key ~= 0 then
+    base_ui.state.toggle_key = boot_toggle_key
+end
+
+if base_ui.state.open then
+    set_cursor_visible(true)
+end
 
 end
