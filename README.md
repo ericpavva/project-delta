@@ -1,5 +1,18 @@
 do
 
+_G.D = _G.D or {}
+_G.D.caches = _G.D.caches or {}
+_G.D.CATEGORY_CACHE = _G.D.CATEGORY_CACHE or {}
+_G.D.ATTACHMENT_CACHE = _G.D.ATTACHMENT_CACHE or {}
+_G.D.ICON_CACHE = _G.D.ICON_CACHE or {}
+_G.D.ICON_MISS = _G.D.ICON_MISS or {}
+_G.D.LOOT_DRAW_FRONT = _G.D.LOOT_DRAW_FRONT or {}
+_G.D.LOOT_DRAW_BACK = _G.D.LOOT_DRAW_BACK or {}
+_G.D.CLAYMORE_DRAW_FRONT = _G.D.CLAYMORE_DRAW_FRONT or {}
+_G.D.CLAYMORE_DRAW_BACK = _G.D.CLAYMORE_DRAW_BACK or {}
+_G.D.CACHE_OPS = 0
+_G.D.CACHE_MAX = 5000
+
 local VERSION = "2.8.4"
 
 local UI = {}
@@ -107,13 +120,6 @@ local function vk_name(vk)
     if not vk or vk == 0 then return "[none]" end
     return "[" .. (VK_NAMES[vk] or ("0x" .. string.format("%02X", vk))) .. "]"
 end
-
-local sqrt = math.sqrt
-local floor = math.floor
-local abs = math.abs
-local min = math.min
-local max = math.max
-local format = string.format
 
 local function in_rect(mx, my, x, y, w, h)
     return mx >= x and mx <= x + w and my >= y and my <= y + h
@@ -255,7 +261,7 @@ function UI:set_visible(id, v) self.state.visible[id] = v == true end
 
 local function hsv_to_rgb(h, s, v)
     h = h * 6
-    local i = floor(h)
+    local i = math.floor(h)
     local f = h - i
     local p, q, t = v*(1-s), v*(1-f*s), v*(1-(1-f)*s)
     if i == 0 then return v, t, p end
@@ -267,8 +273,8 @@ local function hsv_to_rgb(h, s, v)
 end
 
 local function rgb_to_hsv(r, g, b)
-    local mx = max(r, g, b)
-    local mn = min(r, g, b)
+    local mx = math.max(r, g, b)
+    local mn = math.min(r, g, b)
     local d = mx - mn
     local h = 0
     if d > 1e-6 then
@@ -291,7 +297,7 @@ local function draw_color_picker(self, id, x, y, w, h)
     draw.rect_filled(x - 2, y - 2, w + 4, h + 4, {0,0,0,0.75}, 8)
     draw.rect(x, y, w, h, self.COLORS.border, 0, 1.5)
 
-    local sq = min(w - 60, h - 60)
+    local sq = math.min(w - 60, h - 60)
     local sx, sy = x + 12, y + 30
     local hue, sat, val = rgb_to_hsv(c[1], c[2], c[3])
     if picker_state.hue then
@@ -347,8 +353,8 @@ local function draw_color_picker(self, id, x, y, w, h)
     if lmb then
         if picker_state.dragging_sv or in_rect(mx, my, sx, sy, sq, sq) then
             picker_state.dragging_sv = true
-            sat = max(0, min(1, (mx - sx) / sq))
-            val = max(0, min(1, 1 - (my - sy) / sq))
+            sat = math.max(0, math.min(1, (mx - sx) / sq))
+            val = math.max(0, math.min(1, 1 - (my - sy) / sq))
             local r, g, b = hsv_to_rgb(hue, sat, val)
             c[1], c[2], c[3] = r, g, b
             picker_state.hue, picker_state.sat, picker_state.val = hue, sat, val
@@ -356,7 +362,7 @@ local function draw_color_picker(self, id, x, y, w, h)
             if self.state.callbacks[id] then pcall(self.state.callbacks[id], c) end
         elseif picker_state.dragging_hue or in_rect(mx, my, hx, hy, hw, hh) then
             picker_state.dragging_hue = true
-            hue = max(0, min(1, (my - hy) / hh))
+            hue = math.max(0, math.min(1, (my - hy) / hh))
             local r, g, b = hsv_to_rgb(hue, sat, val)
             c[1], c[2], c[3] = r, g, b
             picker_state.hue, picker_state.sat, picker_state.val = hue, sat, val
@@ -417,7 +423,7 @@ local function draw_widget(self, w, x, y, wd, h, lmb_down, lmb_click, block_inpu
         local slider_w = wd - 8
         local track_x = x + 4
         local fmt = w.fmt or "%d"
-        local vtxt = format(fmt, v)
+        local vtxt = string.format(fmt, v)
         local vw = text_w(vtxt, 12)
         draw.text(x + 4, y + 2, w.label, self.COLORS.text, 12)
         draw.text(x + wd - vw - 4, y + 2, vtxt, self.COLORS.accent, 12)
@@ -429,9 +435,9 @@ local function draw_widget(self, w, x, y, wd, h, lmb_down, lmb_click, block_inpu
         if lmb_down then
             if not self.state.drag_target and hot then self.state.drag_target = w.id end
             if self.state.drag_target == w.id then
-                local nt = max(0, min(1, (mx - track_x) / slider_w))
+                local nt = math.max(0, math.min(1, (mx - track_x) / slider_w))
                 local nv = w.min + (w.max - w.min) * nt
-                if w.type == "slider_int" then nv = floor(nv + 0.5) end
+                if w.type == "slider_int" then nv = math.floor(nv + 0.5) end
                 self.state.values[w.id] = nv
                 if self.state.callbacks[w.id] then pcall(self.state.callbacks[w.id], nv) end
             end
@@ -652,7 +658,7 @@ local function draw_window(self)
     local block_input = (st.open_combo ~= nil) or (st.picker ~= nil)
 
     local pad = 8
-    local col_w = floor((st.w - pad * 3) / 2)
+    local col_w = math.floor((st.w - pad * 3) / 2)
     local cols = { st.x + pad, st.x + pad * 2 + col_w }
 
     local group_heights = {}
@@ -668,11 +674,11 @@ local function draw_window(self)
         col_assign[i] = ci
         col_h[ci] = col_h[ci] + hh + 10
     end
-    local total_h = max(col_h[1], col_h[2]) + pad * 2
+    local total_h = math.max(col_h[1], col_h[2]) + pad * 2
     local view_h = body_bottom - body_y
-    local max_scroll = max(0, total_h - view_h)
+    local max_scroll = math.max(0, total_h - view_h)
     st.scroll = st.scroll or 0
-    st.scroll = max(0, min(max_scroll, st.scroll))
+    st.scroll = math.max(0, math.min(max_scroll, st.scroll))
 
     local ys = { body_y + pad - st.scroll, body_y + pad - st.scroll }
 
@@ -692,8 +698,8 @@ local function draw_window(self)
         local group_h = header_h + content_h + 10
 
         if gy < body_bottom and gy + group_h > body_y then
-            local clip_top = max(gy, body_y)
-            local clip_bottom = min(gy + group_h, body_bottom)
+            local clip_top = math.max(gy, body_y)
+            local clip_bottom = math.min(gy + group_h, body_bottom)
             local clip_h = clip_bottom - clip_top
             if clip_h > 0 then
                 draw.rect_filled(gx, clip_top, col_w, clip_h, self.COLORS.panel, 5)
@@ -722,7 +728,7 @@ local function draw_window(self)
     if max_scroll > 0 then
         local sb_x = st.x + st.w - 6
         local sb_w = 4
-        local bar_h = max(20, view_h * (view_h / total_h))
+        local bar_h = math.max(20, view_h * (view_h / total_h))
         local bar_y = body_y + (view_h - bar_h) * (st.scroll / max_scroll)
         draw.rect_filled(sb_x, body_y, sb_w, view_h, {1,1,1,0.05}, 2)
         draw.rect_filled(sb_x, bar_y, sb_w, bar_h, self.COLORS.accent, 2)
@@ -867,17 +873,12 @@ local function tick_and_render()
     draw_window(base_ui)
 end
 
--- =====================================================================
--- PARTE 2 — SCRIPT DELTA V2 (registros e features)
--- =====================================================================
-
 menu.add_tab("Aimbot",  "A")
 menu.add_tab("Visuals", "V")
 menu.add_tab("World",   "W")
 menu.add_tab("Misc",    "M")
 menu.add_tab("Config",  "C")
 
--- ============ VISUALS — PLAYER ESP ============
 menu.add_group("Visuals", "ESP — Player")
 menu.add_checkbox("Visuals", "ESP — Player", "v4_player_enabled", "=== PLAYER === Enable Player ESP", false)
 menu.add_checkbox("Visuals", "ESP — Player", "v4_player_box", "Box", true, { parent = "v4_player_enabled", colorpicker = {1, 0.3, 0.3, 1} })
@@ -889,7 +890,6 @@ menu.add_checkbox("Visuals", "ESP — Player", "v4_player_weapon", "Weapon Name"
 menu.add_checkbox("Visuals", "ESP — Player", "v4_player_team_check", "Team Check", false, { parent = "v4_player_enabled" })
 menu.add_slider_int("Visuals", "ESP — Player", "v4_player_range", "Player Range (m)", 10, 1500, 500, { parent = "v4_player_enabled" })
 
--- ============ VISUALS — NPC ESP ============
 menu.add_group("Visuals", "ESP — NPC")
 menu.add_checkbox("Visuals", "ESP — NPC", "v4_npc_enabled", "=== NPC === Enable NPC ESP", false)
 menu.add_checkbox("Visuals", "ESP — NPC", "v4_npc_box", "Box", true, { parent = "v4_npc_enabled", colorpicker = {1, 0.3, 0.3, 1} })
@@ -899,19 +899,16 @@ menu.add_checkbox("Visuals", "ESP — NPC", "v4_npc_dist", "Distance", true, { p
 menu.add_checkbox("Visuals", "ESP — NPC", "v4_npc_skeleton", "Skeleton", false, { parent = "v4_npc_enabled", colorpicker = {1, 1, 1, 1} })
 menu.add_slider_int("Visuals", "ESP — NPC", "v4_npc_range", "NPC Range (m)", 10, 600, 140, { parent = "v4_npc_enabled" })
 
--- ============ WORLD — CAR ESP ============
 menu.add_group("World", "ESP — Car")
 menu.add_checkbox("World", "ESP — Car", "v4_car_enabled", "=== CAR === Enable Car ESP", false)
 menu.add_checkbox("World", "ESP — Car", "v4_car_col", "Color", true, { parent = "v4_car_enabled", colorpicker = {0.4, 1, 0.4, 1} })
 menu.add_slider_int("World", "ESP — Car", "v4_car_range", "Car Range (m)", 50, 2000, 500, { parent = "v4_car_enabled" })
 
--- ============ WORLD — EXTRACT ============
 menu.add_group("World", "ESP — Extract")
 menu.add_checkbox("World", "ESP — Extract", "v4_exit_enabled", "=== EXTRACT === Enable Extract ESP", false)
 menu.add_checkbox("World", "ESP — Extract", "v4_exit_col", "Color", true, { parent = "v4_exit_enabled", colorpicker = {1, 0.9, 0.2, 1} })
 menu.add_slider_int("World", "ESP — Extract", "v4_exit_range", "Extract Range (m)", 50, 2000, 300, { parent = "v4_exit_enabled" })
 
--- ============ VISUALS — LOOT ESP ============
 menu.add_group("Visuals", "ESP — Loot")
 menu.add_checkbox("Visuals", "ESP — Loot", "v4_loot_enabled", "=== LOOT === Enable Loot ESP", false)
 menu.add_checkbox("Visuals", "ESP — Loot", "v4_loot_weapons", "Weapons", true, { parent = "v4_loot_enabled" })
@@ -923,7 +920,6 @@ menu.add_checkbox("Visuals", "ESP — Loot", "v4_loot_other", "Other", false, { 
 menu.add_checkbox("Visuals", "ESP — Loot", "v4_loot_prefix", "Category Prefix", true, { parent = "v4_loot_enabled" })
 menu.add_slider_int("Visuals", "ESP — Loot", "v4_loot_range", "Loot Range (m)", 10, 600, 84, { parent = "v4_loot_enabled" })
 
--- ============ WORLD — CORPSE ============
 menu.add_group("World", "ESP — Corpse")
 menu.add_checkbox("World", "ESP — Corpse", "v4_corpse_enabled", "=== CORPSE === Enable Corpse ESP", false)
 menu.add_checkbox("World", "ESP — Corpse", "v4_corpse_name", "Name", true, { parent = "v4_corpse_enabled", colorpicker = {1, 0.3, 0.3, 1} })
@@ -931,27 +927,23 @@ menu.add_checkbox("World", "ESP — Corpse", "v4_corpse_dist", "Distance", true,
 menu.add_checkbox("World", "ESP — Corpse", "v4_corpse_marker", "Marker (X)", true, { parent = "v4_corpse_enabled", colorpicker = {1, 0, 0, 1} })
 menu.add_slider_int("World", "ESP — Corpse", "v4_corpse_range", "Corpse Range (m)", 10, 600, 200, { parent = "v4_corpse_enabled" })
 
--- ============ WORLD — CONTAINER ============
 menu.add_group("World", "ESP — Container")
 menu.add_checkbox("World", "ESP — Container", "v4_container_enabled", "=== CONTAINER === Enable Container ESP", false)
 menu.add_checkbox("World", "ESP — Container", "v4_container_col", "Color", true, { parent = "v4_container_enabled", colorpicker = {0.5, 0.5, 1, 1} })
 menu.add_slider_int("World", "ESP — Container", "v4_container_range", "Container Range (m)", 10, 600, 84, { parent = "v4_container_enabled" })
 menu.add_checkbox("World", "ESP — Container", "v4_container_contents", "Show Contents", false, { parent = "v4_container_enabled" })
 
--- ============ WORLD — QUEST ============
 menu.add_group("World", "ESP — Quest")
 menu.add_checkbox("World", "ESP — Quest", "v4_quest_enabled", "=== QUEST === Enable Quest ESP", false)
 menu.add_checkbox("World", "ESP — Quest", "v4_quest_col", "Color", true, { parent = "v4_quest_enabled", colorpicker = {1, 0.5, 1, 1} })
 menu.add_slider_int("World", "ESP — Quest", "v4_quest_range", "Quest Range (m)", 10, 1500, 140, { parent = "v4_quest_enabled" })
 
--- ============ WORLD — CLAYMORE ============
 menu.add_group("World", "ESP — Claymore")
 menu.add_checkbox("World", "ESP — Claymore", "v4_claymore_enabled", "=== CLAYMORE === Enable Claymore ESP", false)
 menu.add_checkbox("World", "ESP — Claymore", "v4_claymore_col", "Color", true, { parent = "v4_claymore_enabled", colorpicker = {1, 0.3, 0.1, 1} })
 menu.add_slider_int("World", "ESP — Claymore", "v4_claymore_range", "Claymore Range (m)", 10, 600, 140, { parent = "v4_claymore_enabled" })
 menu.add_checkbox("World", "ESP — Claymore", "v4_claymore_names", "Show Name + Distance", false, { parent = "v4_claymore_enabled" })
 
--- ============ VISUALS — CHAMS ============
 menu.add_group("Visuals", "Chams")
 menu.add_checkbox("Visuals", "Chams", "v4_chams_enabled", "=== CHAMS === Enable Chams", false)
 menu.add_combo("Visuals", "Chams", "v4_chams_style", "Style", { "Filled", "Outline", "Glow" }, 0, { parent = "v4_chams_enabled" })
@@ -962,17 +954,14 @@ menu.add_checkbox("Visuals", "Chams", "v4_chams_gradient", "Visibility Check (Gr
 menu.add_colorpicker("Visuals", "Chams", "v4_chams_color2", "Hidden Color", {1, 0, 0, 1})
 menu.add_slider_int("Visuals", "Chams", "v4_chams_vis_fov", "Visibility FOV", 0, 360, 90, { parent = "v4_chams_gradient" })
 
--- ============ WORLD — BOSS TRACKER ============
 menu.add_group("World", "Boss Tracker")
 menu.add_checkbox("World", "Boss Tracker", "v4_boss_enabled", "Enable Boss Tracker", false)
 
--- ============ VISUALS — LOOT TRACKER ============
 menu.add_group("Visuals", "Loot Tracker")
 menu.add_checkbox("Visuals", "Loot Tracker", "v4_lt_enabled", "Enable Loot Tracker", false)
 menu.add_slider_int("Visuals", "Loot Tracker", "v4_lt_max", "Max Entries", 1, 50, 50, { parent = "v4_lt_enabled" })
 menu.add_slider_int("Visuals", "Loot Tracker", "v4_lt_far", "Too Far Threshold (m)", 100, 5000, 1000, { parent = "v4_lt_enabled" })
 
--- ============ AIMBOT ============
 menu.add_group("Aimbot", "Aimbot")
 menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_enabled", "Enable Aimbot", false)
 menu.add_hotkey("Aimbot", "Aimbot", "v4_aim_keybind", "Aim Key", 0x02, { parent = "v4_aim_enabled" })
@@ -987,7 +976,6 @@ menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_visible", "Visible Only", true, { 
 menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_draw_fov", "Draw FOV Circle", true, { parent = "v4_aim_enabled" })
 menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_lock", "Target Lock (Sticky)", false, { parent = "v4_aim_enabled" })
 
--- ============ AIMBOT — INVENTORY CHECKER ============
 menu.add_group("Aimbot", "Inventory Checker")
 menu.add_checkbox("Aimbot", "Inventory Checker", "v4_inv_enabled", "Enable Inventory Checker", false)
 menu.add_hotkey("Aimbot", "Inventory Checker", "v4_inv_keybind", "Toggle Key", 0x02, { parent = "v4_inv_enabled" })
@@ -1004,7 +992,6 @@ menu.add_checkbox("Aimbot", "Inventory Checker", "v4_inv_equipped", "Show Equipp
 menu.add_checkbox("Aimbot", "Inventory Checker", "v4_inv_icons", "Show Icons", true, { parent = "v4_inv_enabled" })
 menu.add_slider_int("Aimbot", "Inventory Checker", "v4_inv_icon_size", "Icon Size", 16, 64, 24, { parent = "v4_inv_enabled" })
 
--- ============ AIMBOT — TARGET HUD ============
 menu.add_group("Aimbot", "Target HUD")
 menu.add_checkbox("Aimbot", "Target HUD", "v4_hud_enabled", "Enable Target HUD", false)
 menu.add_checkbox("Aimbot", "Target HUD", "v4_hud_name", "Show Name", true, { parent = "v4_hud_enabled" })
@@ -1022,19 +1009,17 @@ menu.add_slider_int("Aimbot", "Target HUD", "v4_hud_icon_size", "Icon Size", 16,
 menu.add_slider_int("Aimbot", "Target HUD", "v4_hud_range", "Range (m)", 10, 1500, 300, { parent = "v4_hud_enabled" })
 menu.add_slider_int("Aimbot", "Target HUD", "v4_hud_offset_y", "Offset Y", 0, 500, 120, { parent = "v4_hud_enabled" })
 
--- ============ VISUALS — RADAR ============
 menu.add_group("Visuals", "Radar")
 menu.add_checkbox("Visuals", "Radar", "v4_radar_enabled", "Enable Radar", false)
 menu.add_slider_int("Visuals", "Radar", "v4_radar_size", "Size", 100, 300, 180, { parent = "v4_radar_enabled" })
 menu.add_slider_int("Visuals", "Radar", "v4_radar_range", "Range (m)", 50, 500, 150, { parent = "v4_radar_enabled" })
 menu.add_checkbox("Visuals", "Radar", "v4_radar_rotate", "Rotate with camera", true, { parent = "v4_radar_enabled" })
 
--- ============ MISC ============
 menu.add_group("Misc", "Misc")
 menu.add_checkbox("Misc", "Misc", "v4_hitmarker", "Hitmarker", true)
 menu.add_checkbox("Misc", "Misc", "v4_nograss", "No Grass", false)
+menu.add_checkbox("Misc", "Misc", "v4_mem_monitor", "Memory Monitor", false)
 
--- ============ CONFIG ============
 menu.add_group("Config", "UI — Colors")
 menu.add_hotkey("Config", "UI — Colors", "v4_ui_toggle_key", "Menu Toggle Key", 0x2D)
 menu.add_colorpicker("Config", "UI — Colors", "v4_ui_accent", "Accent Color", {0.25, 0.60, 1.00, 1.00})
@@ -1084,11 +1069,10 @@ end)
 
 menu.add_group("Config", "Config")
 
-local CONFIG_NAME = "delta_v2_config.txt"
 local function get_config_path()
     local ad = os.getenv("LOCALAPPDATA")
-    if ad then return ad .. "\\Project Vector\\Scripts\\" .. CONFIG_NAME end
-    return CONFIG_NAME
+    if ad then return ad .. "\\Project Vector\\Scripts\\delta_v2_config.txt" end
+    return "delta_v2_config.txt"
 end
 
 local function m_get(id)
@@ -1163,12 +1147,9 @@ local ITEM_ICONS = {
     ["Karambit"] = "karambit.png", ["Greatsword"] = "greatsword.png",
 }
 
-local ICON_CACHE = {}
-local ICON_MISS = {}
-
 local function get_icon_handle(item_name)
     if not item_name then return nil end
-    if ICON_MISS[item_name] then return nil end
+    if _G.D.ICON_MISS[item_name] then return nil end
     local file = ITEM_ICONS[item_name]
     if not file then
         local n = item_name:lower()
@@ -1176,11 +1157,11 @@ local function get_icon_handle(item_name)
             if key:lower():find(n, 1, true) then file = f break end
         end
     end
-    if not file then ICON_MISS[item_name] = true return nil end
-    if ICON_CACHE[file] ~= nil then return ICON_CACHE[file] end
+    if not file then _G.D.ICON_MISS[item_name] = true return nil end
+    if _G.D.ICON_CACHE[file] ~= nil then return _G.D.ICON_CACHE[file] end
     local ok, handle = pcall(function() return draw.LoadImage(ICON_BASE_URL .. file) end)
-    if ok and handle then ICON_CACHE[file] = handle return handle end
-    ICON_CACHE[file] = false
+    if ok and handle then _G.D.ICON_CACHE[file] = handle return handle end
+    _G.D.ICON_CACHE[file] = false
     return nil
 end
 
@@ -1294,7 +1275,6 @@ local container_points = {}
 local quest_points = {}
 local claymore_points = {}
 local boss_cached = { estonia = {}, city13 = {} }
-local floor_calc = math.floor
 local cached_players_frame = {}
 local original_grass_length = nil
 
@@ -1378,7 +1358,7 @@ end
 
 local function dist3(ax,ay,az,bx,by,bz)
     local dx,dy,dz = ax-bx, ay-by, az-bz
-    return sqrt(dx*dx+dy*dy+dz*dz)
+    return math.sqrt(dx*dx+dy*dy+dz*dz)
 end
 
 local function refresh_folders()
@@ -1855,6 +1835,7 @@ local function refresh_settings()
     S.radar_rotate    = m_get("v4_radar_rotate")
     S.hitmarker       = m_get("v4_hitmarker")
     S.nograss         = m_get("v4_nograss")
+    S.mem_monitor     = m_get("v4_mem_monitor")
 end
 
 local LOOT_CATEGORIES = {
@@ -1936,16 +1917,32 @@ local NOT_WEAPON_PARTS = {
     "visor",
 }
 
-local function is_weapon_attachment(name)
-    if not name then return false end
-    local n = name:lower()
-    for _, kw in ipairs(NOT_WEAPON_PARTS) do
-        if n:find(kw, 1, true) then return true end
-    end
-    return false
+local function maybe_reset_caches()
+    _G.D.CACHE_OPS = _G.D.CACHE_OPS + 1
+    if _G.D.CACHE_OPS < 200 then return end
+    _G.D.CACHE_OPS = 0
+    local n = 0
+    for _ in pairs(_G.D.CATEGORY_CACHE) do n = n + 1 if n > _G.D.CACHE_MAX then break end end
+    if n > _G.D.CACHE_MAX then _G.D.CATEGORY_CACHE = {} end
+    n = 0
+    for _ in pairs(_G.D.ATTACHMENT_CACHE) do n = n + 1 if n > _G.D.CACHE_MAX then break end end
+    if n > _G.D.CACHE_MAX then _G.D.ATTACHMENT_CACHE = {} end
 end
 
-local function categorize(name)
+local function is_weapon_attachment(name)
+    if not name then return false end
+    local c = _G.D.ATTACHMENT_CACHE[name]
+    if c ~= nil then return c end
+    local n = name:lower()
+    local result = false
+    for _, kw in ipairs(NOT_WEAPON_PARTS) do
+        if n:find(kw, 1, true) then result = true break end
+    end
+    _G.D.ATTACHMENT_CACHE[name] = result
+    return result
+end
+
+local function categorize_uncached(name)
     if not name or name == "" then return "other" end
     local n = name:lower()
     for _, b in ipairs(BLACKLIST) do
@@ -1959,6 +1956,25 @@ local function categorize(name)
     end
     return "other"
 end
+
+local function categorize(name)
+    if not name or name == "" then return "other" end
+    local c = _G.D.CATEGORY_CACHE[name]
+    if c ~= nil then return c end
+    local result = categorize_uncached(name)
+    _G.D.CATEGORY_CACHE[name] = result
+    maybe_reset_caches()
+    return result
+end
+
+local CLOTHING_SLOT_TO_CAT = {
+    ["clothingheadware"] = "armor",
+    ["clothingchestrig"] = "armor",
+    ["clothingmask"]     = "armor",
+    ["clothinggloves"]   = "armor",
+    ["clothingbackpack"] = "armor",
+    ["clothinglegarmor"] = "armor",
+}
 
 local function cat_enabled(cat)
     if cat == "weapon" then return S.loot_weapons end
@@ -1994,6 +2010,95 @@ local function scan_loot()
             process(child)
         end
     end
+end
+
+local function clear_table(t)
+    for k in pairs(t) do t[k] = nil end
+end
+
+local function refresh_loot_draw_cache()
+    if not S.loot then return end
+    clear_table(_G.D.LOOT_DRAW_BACK)
+    local range_studs = S.loot_range_studs
+    local cam_x, cam_y, cam_z = world.cam_x, world.cam_y, world.cam_z
+    local any_cat = S.loot_weapons or S.loot_armor or S.loot_valuables
+                    or S.loot_meds or S.loot_ammo or S.loot_other
+    if any_cat then
+        for i=1,#loot_items do
+            local entry = loot_items[i]
+            local part = entry.part
+            if part then
+                local pos = part.position
+                if pos then
+                    local dx = pos.x - cam_x
+                    local dy = pos.y - cam_y
+                    local dz = pos.z - cam_z
+                    local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+                    if dist <= range_studs then
+                        local cat = categorize(entry.name)
+                        if cat_enabled(cat) then
+                            local sx, sy, vis = draw.world_to_screen(pos.x, pos.y, pos.z)
+                            if vis then
+                                local dm = math.floor(dist * M_PER_STUDS)
+                                local prefix = S.loot_prefix and (loot_prefix[cat] or "") or ""
+                                _G.D.LOOT_DRAW_BACK[#_G.D.LOOT_DRAW_BACK+1] = {
+                                    sx = sx, sy = sy,
+                                    txt = prefix .. " " .. entry.name .. " [" .. dm .. "m]",
+                                    col = loot_colors[cat] or loot_colors.other,
+                                }
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    _G.D.LOOT_DRAW_FRONT, _G.D.LOOT_DRAW_BACK = _G.D.LOOT_DRAW_BACK, _G.D.LOOT_DRAW_FRONT
+end
+
+local function refresh_claymore_draw_cache()
+    if not S.claymore then return end
+    clear_table(_G.D.CLAYMORE_DRAW_BACK)
+    local range_studs = S.claymore_range_studs
+    local cam_x, cam_y, cam_z = world.cam_x, world.cam_y, world.cam_z
+    for i=1,#claymore_points do
+        local entry = claymore_points[i]
+        local part = entry.part
+        if part then
+            local pos = part.position
+            if pos then
+                local dx = pos.x - cam_x
+                local dy = pos.y - cam_y
+                local dz = pos.z - cam_z
+                local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+                if dist <= range_studs then
+                    local sz = part.size
+                    local hy = sz and sz.y*0.5 or 1
+                    local sx1, sy1, v1 = draw.world_to_screen(pos.x, pos.y - hy, pos.z)
+                    local sx2, sy2, v2 = draw.world_to_screen(pos.x, pos.y + hy, pos.z)
+                    if v1 and v2 then
+                        local miny = math.min(sy1, sy2)
+                        local maxy = math.max(sy1, sy2)
+                        local bh = maxy - miny
+                        if bh < 4 then bh = 4 end
+                        local bw = bh * 1.2
+                        local minx = sx1 - bw * 0.5
+                        local item = {
+                            box_x = minx, box_y = miny, box_w = bw, box_h = bh,
+                            has_name = false,
+                        }
+                        if S.claymore_names then
+                            local dm = math.floor(dist * M_PER_STUDS)
+                            item.has_name = true
+                            item.name = entry.name .. " [" .. dm .. "m]"
+                        end
+                        _G.D.CLAYMORE_DRAW_BACK[#_G.D.CLAYMORE_DRAW_BACK+1] = item
+                    end
+                end
+            end
+        end
+    end
+    _G.D.CLAYMORE_DRAW_FRONT, _G.D.CLAYMORE_DRAW_BACK = _G.D.CLAYMORE_DRAW_BACK, _G.D.CLAYMORE_DRAW_FRONT
 end
 
 local function draw_player_esp()
@@ -2036,7 +2141,7 @@ local function draw_player_esp()
                                 end
                             end
                             if S.player_dist then
-                                local dm = floor_calc(dist * M_PER_STUDS)
+                                local dm = math.floor(dist * M_PER_STUDS)
                                 local dtxt = dm .. "m"
                                 local tw = draw.get_text_size(dtxt, 12)
                                 draw.text(mid - tw*0.5, b.y + b.h + 4, dtxt, S.player_dist_col, 12)
@@ -2085,7 +2190,7 @@ local function draw_npc_esp()
                                 draw.text(mid - tw*0.5, b.y - 16, n.name, S.npc_name_col, 14)
                             end
                             if S.npc_dist then
-                                local dm = floor_calc(dist * M_PER_STUDS)
+                                local dm = math.floor(dist * M_PER_STUDS)
                                 local dtxt = dm .. "m"
                                 local tw = draw.get_text_size(dtxt, 12)
                                 draw.text(mid - tw*0.5, b.y + b.h + 4, dtxt, S.npc_dist_col, 12)
@@ -2128,7 +2233,7 @@ local function draw_car_esp()
                 if dist <= range_studs then
                     local sx, sy, vis = draw.world_to_screen(pos.x, pos.y + 3, pos.z)
                     if vis then
-                        local dm = floor_calc(dist * M_PER_STUDS)
+                        local dm = math.floor(dist * M_PER_STUDS)
                         local txt = "Car [" .. dm .. "m]"
                         local tw = draw.get_text_size(txt, 13)
                         draw.text(sx - tw*0.5, sy, txt, S.car_col, 13)
@@ -2152,7 +2257,7 @@ local function draw_exit_esp()
                 if dist <= range_studs then
                     local sx, sy, vis = draw.world_to_screen(pos.x, pos.y + 3, pos.z)
                     if vis then
-                        local dm = floor_calc(dist * M_PER_STUDS)
+                        local dm = math.floor(dist * M_PER_STUDS)
                         local txt = e.name .. " [" .. dm .. "m]"
                         local tw = draw.get_text_size(txt, 13)
                         draw.text(sx - tw*0.5, sy, txt, S.exit_col, 13)
@@ -2176,7 +2281,7 @@ local function draw_corpse_esp()
                 if dist <= range_studs then
                     local sx, sy, vis = draw.world_to_screen(pos.x, pos.y + 2, pos.z)
                     if vis then
-                        local dm = floor_calc(dist * M_PER_STUDS)
+                        local dm = math.floor(dist * M_PER_STUDS)
                         local y_off = sy
                         if S.corpse_marker then
                             local sz = 6
@@ -2202,35 +2307,13 @@ local function draw_corpse_esp()
     end
 end
 
-local function draw_loot_esp()
-    if not S.loot or #loot_items == 0 then return end
-    local range_studs = S.loot_range_studs
-    local any_cat = S.loot_weapons or S.loot_armor or S.loot_valuables
-                    or S.loot_meds or S.loot_ammo or S.loot_other
-    if not any_cat then return end
-    for i=1,#loot_items do
-        local entry = loot_items[i]
-        local part = entry.part
-        if part then
-            local pos = part.position
-            if pos then
-                local dist = dist3(pos.x,pos.y,pos.z, world.cam_x,world.cam_y,world.cam_z)
-                if dist <= range_studs then
-                    local cat = categorize(entry.name)
-                    if cat_enabled(cat) then
-                        local sx, sy, vis = draw.world_to_screen(pos.x, pos.y, pos.z)
-                        if vis then
-                            local dm = floor_calc(dist * M_PER_STUDS)
-                            local col = loot_colors[cat] or loot_colors.other
-                            local prefix = S.loot_prefix and (loot_prefix[cat] or "") or ""
-                            local txt = prefix .. " " .. entry.name .. " [" .. dm .. "m]"
-                            local tw = draw.get_text_size(txt, 13)
-                            draw.text(sx - tw*0.5, sy, txt, col, 13)
-                        end
-                    end
-                end
-            end
-        end
+local function draw_loot_esp_cached()
+    if not S.loot then return end
+    local cache = _G.D.LOOT_DRAW_FRONT
+    for i=1,#cache do
+        local e = cache[i]
+        local tw = draw.get_text_size(e.txt, 13)
+        draw.text(e.sx - tw*0.5, e.sy, e.txt, e.col, 13)
     end
 end
 
@@ -2247,7 +2330,7 @@ local function draw_container_esp()
                 if dist <= range_studs then
                     local sx, sy, vis = draw.world_to_screen(pos.x, pos.y, pos.z)
                     if vis then
-                        local dm = floor_calc(dist * M_PER_STUDS)
+                        local dm = math.floor(dist * M_PER_STUDS)
                         local txt = entry.name .. " [" .. dm .. "m]"
                         local tw = draw.get_text_size(txt, 13)
                         draw.text(sx - tw*0.5, sy, txt, S.container_col, 13)
@@ -2280,7 +2363,7 @@ local function draw_quest_esp()
                 if dist <= range_studs then
                     local sx, sy, vis = draw.world_to_screen(pos.x, pos.y, pos.z)
                     if vis then
-                        local dm = floor_calc(dist * M_PER_STUDS)
+                        local dm = math.floor(dist * M_PER_STUDS)
                         local txt = entry.name .. " [" .. dm .. "m]"
                         local tw = draw.get_text_size(txt, 13)
                         draw.text(sx - tw*0.5, sy, txt, S.quest_col, 13)
@@ -2291,44 +2374,15 @@ local function draw_quest_esp()
     end
 end
 
-local function draw_claymore_esp()
-    if not S.claymore or #claymore_points == 0 then return end
-    local range_studs = S.claymore_range_studs
-    for i=1,#claymore_points do
-        local entry = claymore_points[i]
-        local part = entry.part
-        if part then
-            local pos = part.position
-            if pos then
-                local dist = dist3(pos.x,pos.y,pos.z, world.cam_x,world.cam_y,world.cam_z)
-                if dist <= range_studs then
-                    local sz = part.size
-                    local hx = sz and sz.x*0.5 or 1
-                    local hy = sz and sz.y*0.5 or 1
-                    local hz = sz and sz.z*0.5 or 1
-                    local minx,miny,maxx,maxy = 10000,10000,-10000,-10000
-                    local valid = false
-                    for ox=-1,1,2 do for oy=-1,1,2 do for oz=-1,1,2 do
-                        local sx,sy,vis = draw.world_to_screen(pos.x+hx*ox, pos.y+hy*oy, pos.z+hz*oz)
-                        if vis then
-                            valid = true
-                            if sx<minx then minx=sx end if sx>maxx then maxx=sx end
-                            if sy<miny then miny=sy end if sy>maxy then maxy=sy end
-                        end
-                    end end end
-                    if valid then
-                        local bw = maxx-minx
-                        local bh = maxy-miny
-                        draw.box(minx, miny, bw, bh, S.claymore_col, 1)
-                        if S.claymore_names then
-                            local dm = floor_calc(dist * M_PER_STUDS)
-                            local txt = entry.name .. " [" .. dm .. "m]"
-                            local tw = draw.get_text_size(txt, 13)
-                            draw.text(minx + (bw - tw) * 0.5, miny - 16, txt, S.claymore_col, 13)
-                        end
-                    end
-                end
-            end
+local function draw_claymore_esp_cached()
+    if not S.claymore then return end
+    local cache = _G.D.CLAYMORE_DRAW_FRONT
+    for i=1,#cache do
+        local e = cache[i]
+        draw.box(e.box_x, e.box_y, e.box_w, e.box_h, S.claymore_col, 1)
+        if e.has_name then
+            local tw = draw.get_text_size(e.name, 13)
+            draw.text(e.box_x + (e.box_w - tw) * 0.5, e.box_y - 16, e.name, S.claymore_col, 13)
         end
     end
 end
@@ -2343,7 +2397,7 @@ local function format_boss_line(entry)
         if entry.hrp and entry.hrp.position then
             local p = entry.hrp.position
             local d = dist3(p.x,p.y,p.z, world.cam_x,world.cam_y,world.cam_z)
-            dist_txt = floor_calc(d * M_PER_STUDS) .. "m"
+            dist_txt = math.floor(d * M_PER_STUDS) .. "m"
         end
         return dist_txt, {1, 0.85, 0.20, 1}
     end
@@ -2352,9 +2406,9 @@ local function format_boss_line(entry)
     if entry.hrp and entry.hrp.position then
         local p = entry.hrp.position
         local d = dist3(p.x,p.y,p.z, world.cam_x,world.cam_y,world.cam_z)
-        dist_txt = floor_calc(d * M_PER_STUDS) .. "m"
+        dist_txt = math.floor(d * M_PER_STUDS) .. "m"
     end
-    local hp_txt = "HP " .. floor_calc(entry.hp) .. "/" .. floor_calc(entry.max_hp)
+    local hp_txt = "HP " .. math.floor(entry.hp) .. "/" .. math.floor(entry.max_hp)
     return "[" .. dist_txt .. "]  " .. hp_txt, {1, 0.30, 0.30, 1}
 end
 
@@ -2692,7 +2746,7 @@ local function draw_loot_tracker()
             dist_txt = "[TOO FAR]"
             dist_col = lt_col_far
         else
-            local dm = floor_calc(entry.dist * M_PER_STUDS)
+            local dm = math.floor(entry.dist * M_PER_STUDS)
             dist_txt = "[" .. dm .. "m]"
             dist_col = lt_col_player
         end
@@ -2749,7 +2803,7 @@ local function target_in_fov(t, scx, scy)
     end
     if not bvis then return false end
     local dx, dy = bx - scx, by - scy
-    return sqrt(dx*dx + dy*dy) <= S.aim_fov
+    return math.sqrt(dx*dx + dy*dy) <= S.aim_fov
 end
 
 local function pick_target(scx, scy)
@@ -2782,7 +2836,7 @@ local function pick_target(scx, scy)
                     end
                     if bvis then
                         local dx, dy = bx - scx, by - scy
-                        local fov = sqrt(dx*dx + dy*dy)
+                        local fov = math.sqrt(dx*dx + dy*dy)
                         if fov < best_fov then
                             if not S.aim_visible or raycast.IsPlayerVisible(p.character) then
                                 best_fov = fov
@@ -2805,7 +2859,7 @@ local function pick_target(scx, scy)
                         local sx, sy, vis = draw.world_to_screen(pos.x, pos.y, pos.z)
                         if vis then
                             local dx, dy = sx - scx, sy - scy
-                            local fov = sqrt(dx*dx + dy*dy)
+                            local fov = math.sqrt(dx*dx + dy*dy)
                             if fov < best_fov then
                                 if not S.aim_visible or raycast.IsVisible(cx, cy, cz, pos.x, pos.y, pos.z) then
                                     best_fov = fov
@@ -2861,7 +2915,7 @@ local function compute_aim_point(t)
     local dx_s = px - cam.x
     local dy_s = py - cam.y
     local dz_s = pz - cam.z
-    local dist_studs = sqrt(dx_s*dx_s + dy_s*dy_s + dz_s*dz_s)
+    local dist_studs = math.sqrt(dx_s*dx_s + dy_s*dy_s + dz_s*dz_s)
     local dist_m = dist_studs * M_PER_STUDS
     local drop_m = 0
     local t_flight = 0
@@ -2875,8 +2929,7 @@ local function compute_aim_point(t)
     local lead_x_m, lead_y_m, lead_z_m = 0, 0, 0
     if S.aim_lead and t.velocity then
         local v = t.velocity
-        local tf = t_flight
-        if tf <= 0 then
+        local tf = t_flight        if tf <= 0 then
             local weapon = get_equipped_weapon(lp)
             local speed_ms = get_bullet_speed(weapon)
             local _, calc_t = calc_ballistic_drop(dist_m, speed_ms, GRAVITY_MS2)
@@ -2952,10 +3005,13 @@ local function scan_player_inventories()
             local puid = tostring(p.user_id or "")
             local items = {}
             local seen = {}
-            local function add(name)
+            local forced_cats = {}
+            local function add(name, forced_cat)
                 if name and name ~= "" and not seen[name] then
                     seen[name] = true
-                    items[#items+1] = name                end
+                    items[#items+1] = name
+                    if forced_cat then forced_cats[name] = forced_cat end
+                end
             end
             if rep_players then
                 local data = rep_players:find_first_child(pname)
@@ -3004,10 +3060,12 @@ local function scan_player_inventories()
                         for j=1,#kids do
                             local slot = kids[j]
                             if slot then
-                                local nm = slot.name
-                                if type(nm) == "string" and nm ~= "" then
-                                    local resolved = resolve_item_name(slot)
-                                    if resolved then add(resolved) end
+                                local slot_name = slot.name
+                                local resolved = resolve_item_name(slot)
+                                if resolved then
+                                    local slot_key = type(slot_name) == "string" and slot_name:lower() or ""
+                                    local forced = CLOTHING_SLOT_TO_CAT[slot_key]
+                                    add(resolved, forced)
                                 end
                             end
                         end
@@ -3032,7 +3090,7 @@ local function scan_player_inventories()
                 local attachments = get_weapon_attachments(p)
                 for k = 1, #attachments do add(attachments[k]) end
             end
-            result[pname] = {items = items, entity = p, equipped = get_equipped_weapon(p)}
+            result[pname] = {items = items, entity = p, equipped = get_equipped_weapon(p), forced_cats = forced_cats}
         end
     end
     INVENTORY_CACHE = result
@@ -3049,7 +3107,7 @@ local function get_closest_visible_player()
             local sx, sy, vis = draw.world_to_screen(pos.x, pos.y, pos.z)
             if vis then
                 local dx, dy = sx - scx, sy - scy
-                local dist = sqrt(dx*dx + dy*dy)
+                local dist = math.sqrt(dx*dx + dy*dy)
                 if dist < best_dist then best_dist = dist best = data end
             end
         end
@@ -3074,7 +3132,7 @@ local function get_crosshair_player()
                     local sx, sy, vis = draw.world_to_screen(pos.x, pos.y, pos.z)
                     if vis then
                         local dx, dy = sx - scx, sy - scy
-                        local screen_dist = sqrt(dx*dx + dy*dy)
+                        local screen_dist = math.sqrt(dx*dx + dy*dy)
                         if screen_dist < best_dist then
                             best_dist = screen_dist
                             best = p
@@ -3122,9 +3180,10 @@ local function draw_inventory_panel()
     local target = get_closest_visible_player()
     if not target then return end
     local weapons_t, armor_t, valuable_t, other_t = {}, {}, {}, {}
+    local forced = target.forced_cats or {}
     for _, item in ipairs(target.items) do
         if not is_weapon_attachment(item) then
-            local cat = categorize(item)
+            local cat = forced[item] or categorize(item)
             if cat == "weapon" then
                 weapons_t[#weapons_t+1] = item
             elseif cat == "armor" then
@@ -3266,9 +3325,6 @@ local function get_equipped_slot(player_obj, slot_name)
     return resolve_item_name(slot)
 end
 
--- =========================================================
--- CHAMS + VISIBILITY (cache + FOV filter)
--- =========================================================
 local chams_hook_active = false
 local last_chams_style = -1
 local chams_vis_cache = {}
@@ -3316,7 +3372,7 @@ local function is_in_vis_fov(pos)
     local dx = pos.x - world.cam_x
     local dy = pos.y - world.cam_y
     local dz = pos.z - world.cam_z
-    local dist = sqrt(dx*dx + dy*dy + dz*dz)
+    local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
     if dist < 1 then return true end
     local lv = camera.get_look_vector()
     if not lv then return true end
@@ -3339,9 +3395,6 @@ local function get_cached_visibility(addr, target_pos, character)
     return visible
 end
 
--- =========================================================
--- TARGET HUD (com badge VISIBLE/HIDDEN)
--- =========================================================
 local function draw_target_hud()
     if not S.hud then return end
     local target = get_crosshair_player()
@@ -3397,7 +3450,7 @@ local function draw_target_hud()
         table.insert(info_entries, { label = "B", name = backpack or HUD_EMPTY, color = backpack and HUD_COLORS.white or HUD_COLORS.gray })
     end
     if S.hud_dist then
-        table.insert(info_entries, { label = "", name = floor_calc(dist_m) .. "m", color = HUD_COLORS.gray })
+        table.insert(info_entries, { label = "", name = math.floor(dist_m) .. "m", color = HUD_COLORS.gray })
     end
 
     local ICON_SZ = S.hud_icons and S.hud_icon_size or 0
@@ -3463,7 +3516,7 @@ local function draw_target_hud()
         elseif pct > 0.3 then hp_col = {1, 0.8, 0.2, 1}
         else hp_col = {1, 0.2, 0.2, 1} end
         draw.rect_filled(px + 8, ly, bar_w * pct, bar_h, hp_col, 2)
-        local hp_txt = floor_calc(hp) .. "/" .. floor_calc(max_hp)
+        local hp_txt = math.floor(hp) .. "/" .. math.floor(max_hp)
         draw.text(px + 8 + bar_w + 8, ly - 2, hp_txt, {1, 1, 1, 1}, 13)
         ly = ly + 16
     end
@@ -3482,9 +3535,6 @@ local function draw_target_hud()
     end
 end
 
--- =========================================================
--- CHAMS DRAW
--- =========================================================
 local chams_cleanup_counter = 0
 
 local function draw_chams()
@@ -3630,13 +3680,13 @@ local function draw_radar()
         local dz = wz - lpos.z
         if forward then
             local fx, fz = forward.x, forward.z
-            local mag = sqrt(fx*fx + fz*fz)
+            local mag = math.sqrt(fx*fx + fz*fz)
             if mag > 0.001 then fx, fz = fx/mag, fz/mag end
             local rx = dx * (-fz) + dz * fx
             local rz = dx * fx + dz * fz
             dx, dz = rx, rz
         end
-        local d = sqrt(dx*dx + dz*dz)
+        local d = math.sqrt(dx*dx + dz*dz)
         if d > rng then return end
         local sx = cx + (dx / rng) * radius
         local sy = cy - (dz / rng) * radius
@@ -3736,7 +3786,7 @@ local SAVE_ITEMS = {
     {"v4_hud_dist","bool"},{"v4_hud_visible","bool"},{"v4_hud_icons","bool"},{"v4_hud_icon_size","int"},
     {"v4_hud_range","int"},{"v4_hud_offset_y","int"},
     {"v4_radar_enabled","bool"},{"v4_radar_size","int"},{"v4_radar_range","int"},{"v4_radar_rotate","bool"},
-    {"v4_hitmarker","bool"},{"v4_nograss","bool"},
+    {"v4_hitmarker","bool"},{"v4_nograss","bool"},{"v4_mem_monitor","bool"},
     {"v4_ui_opacity","int"},{"v4_ui_border_glow","int"},{"v4_ui_w","int"},{"v4_ui_h","int"},
     {"v4_ui_toggle_key","key"},
 }
@@ -3818,6 +3868,7 @@ menu.add_button("Config", "Config", "v4_load_btn", "Load Config", load_config)
 thread.create(update_camera, 33)
 thread.create(function() refresh_folders() scan_npcs() end, 1500)
 thread.create(scan_loot, 1500)
+thread.create(function() refresh_loot_draw_cache() end, 60)
 thread.create(scan_corpses, 3000)
 thread.create(scan_exits, 5000)
 thread.create(function()
@@ -3831,7 +3882,27 @@ thread.create(scan_player_inventories, 2000)
 thread.create(scan_containers, 4000)
 thread.create(scan_quests, 4000)
 thread.create(scan_claymores, 4000)
+thread.create(function() refresh_claymore_draw_cache() end, 80)
 thread.create(refresh_settings, 500)
+
+local function count_table(t)
+    local n = 0
+    for _ in pairs(t) do n = n + 1 end
+    return n
+end
+
+thread.create(function()
+    if not S.mem_monitor then return end
+    print(string.format("[Delta V2 MEM] CATEGORY=%d ATTACHMENT=%d ICON_CACHE=%d ICON_MISS=%d LOOT_FRONT=%d LOOT_BACK=%d CLAY_FRONT=%d CLAY_BACK=%d CHAMS_VIS=%d CHAMS_PARTS=%d",
+        count_table(_G.D.CATEGORY_CACHE),
+        count_table(_G.D.ATTACHMENT_CACHE),
+        count_table(_G.D.ICON_CACHE),
+        count_table(_G.D.ICON_MISS),
+        #_G.D.LOOT_DRAW_FRONT, #_G.D.LOOT_DRAW_BACK,
+        #_G.D.CLAYMORE_DRAW_FRONT, #_G.D.CLAYMORE_DRAW_BACK,
+        count_table(chams_vis_cache),
+        count_table(chams_part_cache)))
+end, 60000)
 
 _G.on_frame = function()
     cached_players_frame = entity.get_players() or {}
@@ -3852,10 +3923,10 @@ _G.on_frame = function()
     if S.car then draw_car_esp() end
     if S.exit_enabled then draw_exit_esp() end
     if S.corpse then draw_corpse_esp() end
-    if S.loot then draw_loot_esp() end
+    if S.loot then draw_loot_esp_cached() end
     if S.container then draw_container_esp() end
     if S.quest then draw_quest_esp() end
-    if S.claymore then draw_claymore_esp() end
+    if S.claymore then draw_claymore_esp_cached() end
     if S.chams then draw_chams() end
     if S.aim then run_aimbot() end
     if S.radar then draw_radar() end
@@ -3887,6 +3958,8 @@ scan_claymores()
 update_camera()
 refresh_settings()
 load_config()
+refresh_loot_draw_cache()
+refresh_claymore_draw_cache()
 
 local boot_toggle_key = m_key("v4_ui_toggle_key")
 if boot_toggle_key and boot_toggle_key ~= 0 then
@@ -3897,4 +3970,5 @@ if base_ui.state.open then
     set_cursor_visible(true)
 end
 
+print("[Delta V2] v" .. VERSION .. " loaded.")
 end
