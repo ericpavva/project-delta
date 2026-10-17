@@ -10,10 +10,23 @@ _G.D.LOOT_DRAW_FRONT = _G.D.LOOT_DRAW_FRONT or {}
 _G.D.LOOT_DRAW_BACK = _G.D.LOOT_DRAW_BACK or {}
 _G.D.CLAYMORE_DRAW_FRONT = _G.D.CLAYMORE_DRAW_FRONT or {}
 _G.D.CLAYMORE_DRAW_BACK = _G.D.CLAYMORE_DRAW_BACK or {}
+_G.D.TEXT_W_CACHE = _G.D.TEXT_W_CACHE or {}
 _G.D.CACHE_OPS = 0
 _G.D.CACHE_MAX = 5000
+_G.D.EQUIP_CACHE = _G.D.EQUIP_CACHE or {}
+_G.D.MOD_NAMES = _G.D.MOD_NAMES or {
+["solter"]=true,["kupczakk"]=true,["nutsock112"]=true,["thecrafter103"]=true,
+["forkycheck"]=true,["necanwx"]=true,["kbhgaming480"]=true,["lumivoxi"]=true,
+["natan_113"]=true,["ianeyeballs"]=true,["imblu1"]=true,["gribler1"]=true,
+["e2equl"]=true,["hhauoli"]=true,["farlan9"]=true,["zondering"]=true,
+["strawberry_banana0"]=true,["exp_l0"]=true,["raechevel00"]=true,["yuckey47"]=true,
+["shawnybear6"]=true,["deadlymagicaz"]=true,["jannu2010"]=true,["duhacek1112"]=true,
+["sparky_deeny"]=true,["aidendenkule13"]=true,["hakaji"]=true,["c7asher"]=true,
+["dominik7772"]=true,["atlas_thegamer"]=true,["accldentshappen"]=true,["libertadwar"]=true,
+}
+_G.D.detected_mods = _G.D.detected_mods or {}
 
-local VERSION = "2.8.4"
+local VERSION = "2.9.9"
 
 local UI = {}
 UI.__index = UI
@@ -147,8 +160,15 @@ end
 
 local function text_w(s, size)
     if draw and draw.get_text_size then
+        local key = tostring(s or "") .. "|" .. tostring(size or 13)
+        local cached = _G.D.TEXT_W_CACHE[key]
+        if cached then return cached end
         local ok, w = pcall(draw.get_text_size, tostring(s or ""), size or 13)
-        if ok and w then return w end
+        if ok and w then
+            if #_G.D.TEXT_W_CACHE > 2000 then _G.D.TEXT_W_CACHE = {} end
+            _G.D.TEXT_W_CACHE[key] = w
+            return w
+        end
     end
     return #tostring(s or "") * (size or 13) * 0.55
 end
@@ -879,80 +899,78 @@ menu.add_tab("World",   "W")
 menu.add_tab("Misc",    "M")
 menu.add_tab("Config",  "C")
 
-menu.add_group("Visuals", "ESP — Player")
-menu.add_checkbox("Visuals", "ESP — Player", "v4_player_enabled", "=== PLAYER === Enable Player ESP", false)
-menu.add_checkbox("Visuals", "ESP — Player", "v4_player_box", "Box", true, { parent = "v4_player_enabled", colorpicker = {1, 0.3, 0.3, 1} })
-menu.add_checkbox("Visuals", "ESP — Player", "v4_player_health", "Health Bar", true, { parent = "v4_player_enabled" })
-menu.add_checkbox("Visuals", "ESP — Player", "v4_player_name", "Name", true, { parent = "v4_player_enabled", colorpicker = {1, 1, 1, 1} })
-menu.add_checkbox("Visuals", "ESP — Player", "v4_player_dist", "Distance", true, { parent = "v4_player_enabled", colorpicker = {0.7, 0.7, 0.7, 1} })
-menu.add_checkbox("Visuals", "ESP — Player", "v4_player_skeleton", "Skeleton", false, { parent = "v4_player_enabled", colorpicker = {1, 1, 1, 1} })
-menu.add_checkbox("Visuals", "ESP — Player", "v4_player_weapon", "Weapon Name", true, { parent = "v4_player_enabled", colorpicker = {1, 0.8, 0.2, 1} })
-menu.add_checkbox("Visuals", "ESP — Player", "v4_player_team_check", "Team Check", false, { parent = "v4_player_enabled" })
-menu.add_slider_int("Visuals", "ESP — Player", "v4_player_range", "Player Range (m)", 10, 1500, 500, { parent = "v4_player_enabled" })
+menu.add_group("Visuals", "ESP - Player")
+menu.add_checkbox("Visuals", "ESP - Player", "v4_player_enabled", "=== PLAYER === Enable Player ESP", false)
+menu.add_checkbox("Visuals", "ESP - Player", "v4_player_box", "Box", true, { parent = "v4_player_enabled", colorpicker = {1, 0.3, 0.3, 1} })
+menu.add_checkbox("Visuals", "ESP - Player", "v4_player_health", "Health Bar", true, { parent = "v4_player_enabled" })
+menu.add_checkbox("Visuals", "ESP - Player", "v4_player_name", "Name", true, { parent = "v4_player_enabled", colorpicker = {1, 1, 1, 1} })
+menu.add_checkbox("Visuals", "ESP - Player", "v4_player_dist", "Distance", true, { parent = "v4_player_enabled", colorpicker = {0.7, 0.7, 0.7, 1} })
+menu.add_checkbox("Visuals", "ESP - Player", "v4_player_skeleton", "Skeleton", false, { parent = "v4_player_enabled", colorpicker = {1, 1, 1, 1} })
+menu.add_checkbox("Visuals", "ESP - Player", "v4_player_weapon", "Weapon Name", true, { parent = "v4_player_enabled", colorpicker = {1, 0.8, 0.2, 1} })
+menu.add_checkbox("Visuals", "ESP - Player", "v4_player_team_check", "Team Check", false, { parent = "v4_player_enabled" })
+menu.add_slider_int("Visuals", "ESP - Player", "v4_player_range", "Player Range (m)", 10, 1500, 500, { parent = "v4_player_enabled" })
 
-menu.add_group("Visuals", "ESP — NPC")
-menu.add_checkbox("Visuals", "ESP — NPC", "v4_npc_enabled", "=== NPC === Enable NPC ESP", false)
-menu.add_checkbox("Visuals", "ESP — NPC", "v4_npc_box", "Box", true, { parent = "v4_npc_enabled", colorpicker = {1, 0.3, 0.3, 1} })
-menu.add_checkbox("Visuals", "ESP — NPC", "v4_npc_health", "Health Bar", true, { parent = "v4_npc_enabled" })
-menu.add_checkbox("Visuals", "ESP — NPC", "v4_npc_name", "Name", true, { parent = "v4_npc_enabled", colorpicker = {1, 0.3, 0.3, 1} })
-menu.add_checkbox("Visuals", "ESP — NPC", "v4_npc_dist", "Distance", true, { parent = "v4_npc_enabled", colorpicker = {0.7, 0.7, 0.7, 1} })
-menu.add_checkbox("Visuals", "ESP — NPC", "v4_npc_skeleton", "Skeleton", false, { parent = "v4_npc_enabled", colorpicker = {1, 1, 1, 1} })
-menu.add_slider_int("Visuals", "ESP — NPC", "v4_npc_range", "NPC Range (m)", 10, 600, 140, { parent = "v4_npc_enabled" })
+menu.add_group("Visuals", "ESP - NPC")
+menu.add_checkbox("Visuals", "ESP - NPC", "v4_npc_enabled", "=== NPC === Enable NPC ESP", false)
+menu.add_checkbox("Visuals", "ESP - NPC", "v4_npc_box", "Box", true, { parent = "v4_npc_enabled", colorpicker = {1, 0.3, 0.3, 1} })
+menu.add_checkbox("Visuals", "ESP - NPC", "v4_npc_health", "Health Bar", true, { parent = "v4_npc_enabled" })
+menu.add_checkbox("Visuals", "ESP - NPC", "v4_npc_name", "Name", true, { parent = "v4_npc_enabled", colorpicker = {1, 0.3, 0.3, 1} })
+menu.add_checkbox("Visuals", "ESP - NPC", "v4_npc_dist", "Distance", true, { parent = "v4_npc_enabled", colorpicker = {0.7, 0.7, 0.7, 1} })
+menu.add_checkbox("Visuals", "ESP - NPC", "v4_npc_skeleton", "Skeleton", false, { parent = "v4_npc_enabled", colorpicker = {1, 1, 1, 1} })
+menu.add_slider_int("Visuals", "ESP - NPC", "v4_npc_range", "NPC Range (m)", 10, 600, 140, { parent = "v4_npc_enabled" })
 
-menu.add_group("World", "ESP — Car")
-menu.add_checkbox("World", "ESP — Car", "v4_car_enabled", "=== CAR === Enable Car ESP", false)
-menu.add_checkbox("World", "ESP — Car", "v4_car_col", "Color", true, { parent = "v4_car_enabled", colorpicker = {0.4, 1, 0.4, 1} })
-menu.add_slider_int("World", "ESP — Car", "v4_car_range", "Car Range (m)", 50, 2000, 500, { parent = "v4_car_enabled" })
+menu.add_group("World", "ESP - Car")
+menu.add_checkbox("World", "ESP - Car", "v4_car_enabled", "=== CAR === Enable Car ESP", false)
+menu.add_checkbox("World", "ESP - Car", "v4_car_col", "Color", true, { parent = "v4_car_enabled", colorpicker = {0.4, 1, 0.4, 1} })
+menu.add_slider_int("World", "ESP - Car", "v4_car_range", "Car Range (m)", 50, 2000, 500, { parent = "v4_car_enabled" })
 
-menu.add_group("World", "ESP — Extract")
-menu.add_checkbox("World", "ESP — Extract", "v4_exit_enabled", "=== EXTRACT === Enable Extract ESP", false)
-menu.add_checkbox("World", "ESP — Extract", "v4_exit_col", "Color", true, { parent = "v4_exit_enabled", colorpicker = {1, 0.9, 0.2, 1} })
-menu.add_slider_int("World", "ESP — Extract", "v4_exit_range", "Extract Range (m)", 50, 2000, 300, { parent = "v4_exit_enabled" })
+menu.add_group("World", "ESP - Extract")
+menu.add_checkbox("World", "ESP - Extract", "v4_exit_enabled", "=== EXTRACT === Enable Extract ESP", false)
+menu.add_checkbox("World", "ESP - Extract", "v4_exit_col", "Color", true, { parent = "v4_exit_enabled", colorpicker = {1, 0.9, 0.2, 1} })
+menu.add_slider_int("World", "ESP - Extract", "v4_exit_range", "Extract Range (m)", 50, 2000, 300, { parent = "v4_exit_enabled" })
 
-menu.add_group("Visuals", "ESP — Loot")
-menu.add_checkbox("Visuals", "ESP — Loot", "v4_loot_enabled", "=== LOOT === Enable Loot ESP", false)
-menu.add_checkbox("Visuals", "ESP — Loot", "v4_loot_weapons", "Weapons", true, { parent = "v4_loot_enabled" })
-menu.add_checkbox("Visuals", "ESP — Loot", "v4_loot_armor", "Armor", true, { parent = "v4_loot_enabled" })
-menu.add_checkbox("Visuals", "ESP — Loot", "v4_loot_valuables", "Valuables", true, { parent = "v4_loot_enabled" })
-menu.add_checkbox("Visuals", "ESP — Loot", "v4_loot_meds", "Meds", false, { parent = "v4_loot_enabled" })
-menu.add_checkbox("Visuals", "ESP — Loot", "v4_loot_ammo", "Ammo", false, { parent = "v4_loot_enabled" })
-menu.add_checkbox("Visuals", "ESP — Loot", "v4_loot_other", "Other", false, { parent = "v4_loot_enabled" })
-menu.add_checkbox("Visuals", "ESP — Loot", "v4_loot_prefix", "Category Prefix", true, { parent = "v4_loot_enabled" })
-menu.add_slider_int("Visuals", "ESP — Loot", "v4_loot_range", "Loot Range (m)", 10, 600, 84, { parent = "v4_loot_enabled" })
+menu.add_group("Visuals", "ESP - Loot")
+menu.add_checkbox("Visuals", "ESP - Loot", "v4_loot_enabled", "=== LOOT === Enable Loot ESP", false)
+menu.add_checkbox("Visuals", "ESP - Loot", "v4_loot_weapons", "Weapons", true, { parent = "v4_loot_enabled" })
+menu.add_checkbox("Visuals", "ESP - Loot", "v4_loot_armor", "Armor", true, { parent = "v4_loot_enabled" })
+menu.add_checkbox("Visuals", "ESP - Loot", "v4_loot_valuables", "Valuables", true, { parent = "v4_loot_enabled" })
+menu.add_checkbox("Visuals", "ESP - Loot", "v4_loot_meds", "Meds", false, { parent = "v4_loot_enabled" })
+menu.add_checkbox("Visuals", "ESP - Loot", "v4_loot_ammo", "Ammo", false, { parent = "v4_loot_enabled" })
+menu.add_checkbox("Visuals", "ESP - Loot", "v4_loot_other", "Other", false, { parent = "v4_loot_enabled" })
+menu.add_checkbox("Visuals", "ESP - Loot", "v4_loot_prefix", "Category Prefix", true, { parent = "v4_loot_enabled" })
+menu.add_slider_int("Visuals", "ESP - Loot", "v4_loot_range", "Loot Range (m)", 10, 600, 84, { parent = "v4_loot_enabled" })
 
-menu.add_group("World", "ESP — Corpse")
-menu.add_checkbox("World", "ESP — Corpse", "v4_corpse_enabled", "=== CORPSE === Enable Corpse ESP", false)
-menu.add_checkbox("World", "ESP — Corpse", "v4_corpse_name", "Name", true, { parent = "v4_corpse_enabled", colorpicker = {1, 0.3, 0.3, 1} })
-menu.add_checkbox("World", "ESP — Corpse", "v4_corpse_dist", "Distance", true, { parent = "v4_corpse_enabled", colorpicker = {0.7, 0.7, 0.7, 1} })
-menu.add_checkbox("World", "ESP — Corpse", "v4_corpse_marker", "Marker (X)", true, { parent = "v4_corpse_enabled", colorpicker = {1, 0, 0, 1} })
-menu.add_slider_int("World", "ESP — Corpse", "v4_corpse_range", "Corpse Range (m)", 10, 600, 200, { parent = "v4_corpse_enabled" })
+menu.add_group("World", "ESP - Corpse")
+menu.add_checkbox("World", "ESP - Corpse", "v4_corpse_enabled", "=== CORPSE === Enable Corpse ESP", false)
+menu.add_checkbox("World", "ESP - Corpse", "v4_corpse_name", "Name", true, { parent = "v4_corpse_enabled", colorpicker = {1, 0.3, 0.3, 1} })
+menu.add_checkbox("World", "ESP - Corpse", "v4_corpse_dist", "Distance", true, { parent = "v4_corpse_enabled", colorpicker = {0.7, 0.7, 0.7, 1} })
+menu.add_checkbox("World", "ESP - Corpse", "v4_corpse_marker", "Marker (X)", true, { parent = "v4_corpse_enabled", colorpicker = {1, 0, 0, 1} })
+menu.add_checkbox("World", "ESP - Corpse", "v4_corpse_contents", "Show Contents", false, { parent = "v4_corpse_enabled" })
+menu.add_slider_int("World", "ESP - Corpse", "v4_corpse_range", "Corpse Range (m)", 10, 600, 200, { parent = "v4_corpse_enabled" })
 
-menu.add_group("World", "ESP — Container")
-menu.add_checkbox("World", "ESP — Container", "v4_container_enabled", "=== CONTAINER === Enable Container ESP", false)
-menu.add_checkbox("World", "ESP — Container", "v4_container_col", "Color", true, { parent = "v4_container_enabled", colorpicker = {0.5, 0.5, 1, 1} })
-menu.add_slider_int("World", "ESP — Container", "v4_container_range", "Container Range (m)", 10, 600, 84, { parent = "v4_container_enabled" })
-menu.add_checkbox("World", "ESP — Container", "v4_container_contents", "Show Contents", false, { parent = "v4_container_enabled" })
+menu.add_group("World", "ESP - Container")
+menu.add_checkbox("World", "ESP - Container", "v4_container_enabled", "=== CONTAINER === Enable Container ESP", false)
+menu.add_checkbox("World", "ESP - Container", "v4_container_col", "Color", true, { parent = "v4_container_enabled", colorpicker = {0.5, 0.5, 1, 1} })
+menu.add_slider_int("World", "ESP - Container", "v4_container_range", "Container Range (m)", 10, 600, 84, { parent = "v4_container_enabled" })
+menu.add_checkbox("World", "ESP - Container", "v4_container_contents", "Show Contents", false, { parent = "v4_container_enabled" })
 
-menu.add_group("World", "ESP — Quest")
-menu.add_checkbox("World", "ESP — Quest", "v4_quest_enabled", "=== QUEST === Enable Quest ESP", false)
-menu.add_checkbox("World", "ESP — Quest", "v4_quest_col", "Color", true, { parent = "v4_quest_enabled", colorpicker = {1, 0.5, 1, 1} })
-menu.add_slider_int("World", "ESP — Quest", "v4_quest_range", "Quest Range (m)", 10, 1500, 140, { parent = "v4_quest_enabled" })
+menu.add_group("World", "ESP - Quest")
+menu.add_checkbox("World", "ESP - Quest", "v4_quest_enabled", "=== QUEST === Enable Quest ESP", false)
+menu.add_checkbox("World", "ESP - Quest", "v4_quest_col", "Color", true, { parent = "v4_quest_enabled", colorpicker = {1, 0.5, 1, 1} })
+menu.add_slider_int("World", "ESP - Quest", "v4_quest_range", "Quest Range (m)", 10, 1500, 140, { parent = "v4_quest_enabled" })
 
-menu.add_group("World", "ESP — Claymore")
-menu.add_checkbox("World", "ESP — Claymore", "v4_claymore_enabled", "=== CLAYMORE === Enable Claymore ESP", false)
-menu.add_checkbox("World", "ESP — Claymore", "v4_claymore_col", "Color", true, { parent = "v4_claymore_enabled", colorpicker = {1, 0.3, 0.1, 1} })
-menu.add_slider_int("World", "ESP — Claymore", "v4_claymore_range", "Claymore Range (m)", 10, 600, 140, { parent = "v4_claymore_enabled" })
-menu.add_checkbox("World", "ESP — Claymore", "v4_claymore_names", "Show Name + Distance", false, { parent = "v4_claymore_enabled" })
+menu.add_group("World", "ESP - Claymore")
+menu.add_checkbox("World", "ESP - Claymore", "v4_claymore_enabled", "=== CLAYMORE === Enable Claymore ESP", false)
+menu.add_checkbox("World", "ESP - Claymore", "v4_claymore_col", "Color", true, { parent = "v4_claymore_enabled", colorpicker = {1, 0.3, 0.1, 1} })
+menu.add_slider_int("World", "ESP - Claymore", "v4_claymore_range", "Claymore Range (m)", 10, 600, 140, { parent = "v4_claymore_enabled" })
+menu.add_checkbox("World", "ESP - Claymore", "v4_claymore_names", "Show Name + Distance", false, { parent = "v4_claymore_enabled" })
 
 menu.add_group("Visuals", "Chams")
 menu.add_checkbox("Visuals", "Chams", "v4_chams_enabled", "=== CHAMS === Enable Chams", false)
 menu.add_combo("Visuals", "Chams", "v4_chams_style", "Style", { "Filled", "Outline", "Glow" }, 0, { parent = "v4_chams_enabled" })
 menu.add_checkbox("Visuals", "Chams", "v4_chams_players", "Players", true, { parent = "v4_chams_enabled" })
 menu.add_checkbox("Visuals", "Chams", "v4_chams_npcs", "NPCs", true, { parent = "v4_chams_enabled" })
-menu.add_colorpicker("Visuals", "Chams", "v4_chams_color", "Visible Color", {0, 1, 0, 1})
-menu.add_checkbox("Visuals", "Chams", "v4_chams_gradient", "Visibility Check (Gradient)", false, { parent = "v4_chams_enabled" })
-menu.add_colorpicker("Visuals", "Chams", "v4_chams_color2", "Hidden Color", {1, 0, 0, 1})
-menu.add_slider_int("Visuals", "Chams", "v4_chams_vis_fov", "Visibility FOV", 0, 360, 90, { parent = "v4_chams_gradient" })
+menu.add_colorpicker("Visuals", "Chams", "v4_chams_color", "Chams Color", {0, 1, 0, 1})
 
 menu.add_group("World", "Boss Tracker")
 menu.add_checkbox("World", "Boss Tracker", "v4_boss_enabled", "Enable Boss Tracker", false)
@@ -970,9 +988,6 @@ menu.add_combo("Aimbot", "Aimbot", "v4_aim_bone", "Bone", { "Head", "UpperTorso"
 menu.add_slider_int("Aimbot", "Aimbot", "v4_aim_fov", "FOV", 10, 800, 150, { parent = "v4_aim_enabled" })
 menu.add_slider_int("Aimbot", "Aimbot", "v4_aim_smooth", "Smooth", 1, 20, 4, { parent = "v4_aim_enabled" })
 menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_predict", "Ballistic Prediction", true, { parent = "v4_aim_enabled" })
-menu.add_slider_int("Aimbot", "Aimbot", "v4_aim_predict_scale", "Predict Scale %", 0, 200, 120, { parent = "v4_aim_enabled" })
-menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_lead", "Velocity Lead", true, { parent = "v4_aim_enabled" })
-menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_visible", "Visible Only", true, { parent = "v4_aim_enabled" })
 menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_draw_fov", "Draw FOV Circle", true, { parent = "v4_aim_enabled" })
 menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_lock", "Target Lock (Sticky)", false, { parent = "v4_aim_enabled" })
 
@@ -1017,15 +1032,16 @@ menu.add_checkbox("Visuals", "Radar", "v4_radar_rotate", "Rotate with camera", t
 menu.add_group("Misc", "Misc")
 menu.add_checkbox("Misc", "Misc", "v4_hitmarker", "Hitmarker", true)
 menu.add_checkbox("Misc", "Misc", "v4_nograss", "No Grass", false)
+menu.add_checkbox("Misc", "Misc", "v4_mod_hud", "Mod Detector HUD", true)
 
-menu.add_group("Config", "UI — Colors")
-menu.add_hotkey("Config", "UI — Colors", "v4_ui_toggle_key", "Menu Toggle Key", 0x2D)
-menu.add_colorpicker("Config", "UI — Colors", "v4_ui_accent", "Accent Color", {0.25, 0.60, 1.00, 1.00})
-menu.add_slider_int("Config", "UI — Colors", "v4_ui_opacity", "UI Opacity (%)", 30, 100, 96)
-menu.add_slider_int("Config", "UI — Colors", "v4_ui_border_glow", "Border Glow (%)", 0, 200, 100)
-menu.add_slider_int("Config", "UI — Colors", "v4_ui_w", "Window Width", 500, 1400, 820)
-menu.add_slider_int("Config", "UI — Colors", "v4_ui_h", "Window Height", 400, 1200, 950)
-menu.add_button("Config", "UI — Colors", "v4_ui_reset", "Reset Theme", function()
+menu.add_group("Config", "UI - Colors")
+menu.add_hotkey("Config", "UI - Colors", "v4_ui_toggle_key", "Menu Toggle Key", 0x2D)
+menu.add_colorpicker("Config", "UI - Colors", "v4_ui_accent", "Accent Color", {0.25, 0.60, 1.00, 1.00})
+menu.add_slider_int("Config", "UI - Colors", "v4_ui_opacity", "UI Opacity (%)", 30, 100, 96)
+menu.add_slider_int("Config", "UI - Colors", "v4_ui_border_glow", "Border Glow (%)", 0, 200, 100)
+menu.add_slider_int("Config", "UI - Colors", "v4_ui_w", "Window Width", 500, 1400, 820)
+menu.add_slider_int("Config", "UI - Colors", "v4_ui_h", "Window Height", 400, 1200, 950)
+menu.add_button("Config", "UI - Colors", "v4_ui_reset", "Reset Theme", function()
     base_ui.state.ui_settings.accent = {0.25, 0.60, 1.00, 1.00}
     base_ui.state.ui_settings.opacity = 96
     base_ui.state.ui_settings.border_glow = 100
@@ -1242,6 +1258,13 @@ end
 
 local function get_equipped_weapon(player_obj)
     if not player_obj then return nil end
+    local caddr = nil
+    pcall(function() caddr = player_obj.character and player_obj.character.address end)
+    if caddr then
+        local c = _G.D.EQUIP_CACHE[caddr]
+        local now = utility.get_tick_count()
+        if c and (now - c.t) < 200 then return c.w end
+    end
     local ok, char = pcall(function() return player_obj.character end)
     if not ok or not char then return nil end
     local ok2, holding = pcall(function() return char:find_first_child("Holding") end)
@@ -1250,7 +1273,9 @@ local function get_equipped_weapon(player_obj)
     if not ok3 or not val then return nil end
     local ok4, name = pcall(function() return val.name end)
     if not ok4 or not name then return nil end
-    return ITEM_NAME_MAP[name] or name
+    local w = ITEM_NAME_MAP[name] or name
+    if caddr then _G.D.EQUIP_CACHE[caddr] = { w = w, t = utility.get_tick_count() } end
+    return w
 end
 
 local SKELETON_PAIRS = {
@@ -1490,6 +1515,29 @@ local function scan_npcs()
     end
 end
 
+local function get_container_contents(model)
+    if not model then return nil end
+    local inv = model:find_first_child("Inventory")
+    if not inv then return nil end
+    local ok, children = pcall(function() return inv:get_children() end)
+    if not ok or not children or #children == 0 then return nil end
+    local counts = {}
+    for i=1,#children do
+        local it = children[i]
+        local name = it.name
+        if it.class_name == "ObjectValue" and it.value then
+            local ok2, vn = pcall(function() return it.value.name end)
+            if ok2 then name = vn end
+        end
+        if name ~= "" then counts[name] = (counts[name] or 0) + 1 end
+    end
+    local out = {}
+    for name, count in pairs(counts) do
+        out[#out+1] = count > 1 and (name .. " x" .. count) or name
+    end
+    return #out > 0 and out or nil
+end
+
 local function scan_corpses()
     corpses_cached = {}
     local drops = folders.drops
@@ -1504,7 +1552,7 @@ local function scan_corpses()
         local ref = head or torso
         local pos = ref.position
         if not pos then return end
-        corpses_cached[#corpses_cached+1] = {name = model.name, part = ref, model = model}
+        corpses_cached[#corpses_cached+1] = {name = model.name, part = ref, model = model, contents = get_container_contents(model)}
     end
     for i=1,#kids do
         local child = kids[i]
@@ -1569,28 +1617,6 @@ local function scan_cars()
             if c and c.class_name == "Model" and is_car_name(c.name) then try_car(c) end
         end
     end
-end
-
-local function get_container_contents(model)
-    local inv = model:find_first_child("Inventory")
-    if not inv then return nil end
-    local ok, children = pcall(function() return inv:get_children() end)
-    if not ok or not children or #children == 0 then return nil end
-    local counts = {}
-    for i=1,#children do
-        local it = children[i]
-        local name = it.name
-        if it.class_name == "ObjectValue" and it.value then
-            local ok2, vn = pcall(function() return it.value.name end)
-            if ok2 then name = vn end
-        end
-        if name ~= "" then counts[name] = (counts[name] or 0) + 1 end
-    end
-    local out = {}
-    for name, count in pairs(counts) do
-        out[#out+1] = count > 1 and (name .. " x" .. count) or name
-    end
-    return #out > 0 and out or nil
 end
 
 local function scan_containers()
@@ -1752,6 +1778,7 @@ local function refresh_settings()
     S.corpse_dist_col = m_col("v4_corpse_dist")
     S.corpse_marker   = m_get("v4_corpse_marker")
     S.corpse_marker_col = m_col("v4_corpse_marker")
+    S.corpse_contents = m_get("v4_corpse_contents")
     S.corpse_range    = m_get("v4_corpse_range") or 200
     S.corpse_range_studs = S.corpse_range * STUDS_PER_M
     S.container       = m_get("v4_container_enabled")
@@ -1773,9 +1800,6 @@ local function refresh_settings()
     S.chams_players   = m_get("v4_chams_players")
     S.chams_npcs      = m_get("v4_chams_npcs")
     S.chams_col       = m_col("v4_chams_color")
-    S.chams_gradient  = m_get("v4_chams_gradient")
-    S.chams_col2      = m_col("v4_chams_color2")
-    S.chams_vis_fov   = m_get("v4_chams_vis_fov") or 90
     S.boss            = m_get("v4_boss_enabled")
     S.lt              = m_get("v4_lt_enabled")
     S.lt_max          = m_get("v4_lt_max") or 50
@@ -1790,9 +1814,8 @@ local function refresh_settings()
     S.aim_fov         = m_get("v4_aim_fov") or 150
     S.aim_smooth      = m_get("v4_aim_smooth") or 4
     S.aim_predict     = m_get("v4_aim_predict")
-    S.aim_predict_scale = (m_get("v4_aim_predict_scale") or 120) / 100
-    S.aim_lead        = m_get("v4_aim_lead")
-    S.aim_visible     = m_get("v4_aim_visible")
+    S.aim_predict_scale = 1.2
+    S.aim_lead        = true
     S.aim_draw_fov    = m_get("v4_aim_draw_fov")
     S.aim_lock        = m_get("v4_aim_lock")
     S.inv             = m_get("v4_inv_enabled")
@@ -1832,6 +1855,7 @@ local function refresh_settings()
     S.radar_rotate    = m_get("v4_radar_rotate")
     S.hitmarker       = m_get("v4_hitmarker")
     S.nograss         = m_get("v4_nograss")
+    S.mod_hud         = m_get("v4_mod_hud")
 end
 
 local LOOT_CATEGORIES = {
@@ -2295,6 +2319,15 @@ local function draw_corpse_esp()
                             local dtxt = dm .. "m"
                             local tw = draw.get_text_size(dtxt, 12)
                             draw.text(sx - tw*0.5, y_off, dtxt, S.corpse_dist_col, 12)
+                            y_off = y_off + 13
+                        end
+                        if S.corpse_contents and d.contents then
+                            for j=1,#d.contents do
+                                local itxt = d.contents[j]
+                                local itw = draw.get_text_size(itxt, 11)
+                                draw.text(sx - itw*0.5, y_off, itxt, {0.75,0.75,0.80,1}, 11)
+                                y_off = y_off + 12
+                            end
                         end
                     end
                 end
@@ -2477,6 +2510,50 @@ local function draw_boss_tracker()
         local e = city[boss.key]
         if e then row(e) end
     end
+end
+
+local MOD_HUD_POS = { x = 12, y = 12 }
+
+local function update_mod_check()
+    local found = {}
+    local players = entity.get_players()
+    if players then
+        for i = 1, #players do
+            local p = players[i]
+            if p and p.is_valid and p.name then
+                local pn = p.name:lower()
+                if _G.D.MOD_NAMES[pn] then
+                    found[#found+1] = p.name
+                end
+            end
+        end
+    end
+    _G.D.detected_mods = found
+end
+
+local function draw_mod_hud()
+    if not S.mod_hud then return end
+    local count = #_G.D.detected_mods
+    local txt
+    local col
+    if count > 0 then
+        txt = "MODS: " .. count
+        col = {1, 0.25, 0.25, 1}
+    else
+        txt = "MODS: 0"
+        col = {0.4, 0.9, 0.5, 1}
+    end
+    local fs = 14
+    local tw = draw.get_text_size(txt, fs)
+    local pad_x = 10
+    local pad_y = 5
+    local w = tw + pad_x * 2
+    local h = fs + pad_y * 2
+    local x = MOD_HUD_POS.x
+    local y = MOD_HUD_POS.y
+    draw.rect_filled(x, y, w, h, {0.03, 0.03, 0.05, 0.85}, 4)
+    draw.rect(x, y, w, h, col, 4, 1.5)
+    draw.text(x + pad_x, y + pad_y, txt, col, fs)
 end
 
 local lt_panel = { x = 30, y = 700, w = 280, dragging = false, drag_ox = 0, drag_oy = 0 }
@@ -2805,7 +2882,6 @@ end
 local function pick_target(scx, scy)
     local best_fov = S.aim_fov
     local best = nil
-    local cx,cy,cz = world.cam_x, world.cam_y, world.cam_z
     local bone_map = {"Head","UpperTorso","LowerTorso"}
     local bone_idx = tonumber(S.aim_bone) or 0
     if bone_idx < 0 or bone_idx > 2 then bone_idx = 0 end
@@ -2834,10 +2910,8 @@ local function pick_target(scx, scy)
                         local dx, dy = bx - scx, by - scy
                         local fov = math.sqrt(dx*dx + dy*dy)
                         if fov < best_fov then
-                            if not S.aim_visible or raycast.IsPlayerVisible(p.character) then
-                                best_fov = fov
-                                best = {kind="player", entity=p, bone_name=bone_name, velocity=p.velocity, position=p.position}
-                            end
+                            best_fov = fov
+                            best = {kind="player", entity=p, bone_name=bone_name, velocity=p.velocity, position=p.position}
                         end
                     end
                 end
@@ -2857,10 +2931,8 @@ local function pick_target(scx, scy)
                             local dx, dy = sx - scx, sy - scy
                             local fov = math.sqrt(dx*dx + dy*dy)
                             if fov < best_fov then
-                                if not S.aim_visible or raycast.IsVisible(cx, cy, cz, pos.x, pos.y, pos.z) then
-                                    best_fov = fov
-                                    best = {kind="npc", entity=n, bone_name=bone_name, velocity=pd.part.velocity, position=pos}
-                                end
+                                best_fov = fov
+                                best = {kind="npc", entity=n, bone_name=bone_name, velocity=pd.part.velocity, position=pos}
                             end
                         end
                     end
@@ -3322,76 +3394,6 @@ local function get_equipped_slot(player_obj, slot_name)
     return resolve_item_name(slot)
 end
 
-local chams_hook_active = false
-local last_chams_style = -1
-local chams_vis_cache = {}
-local CHAMS_VIS_CACHE_MS = 150
-local chams_part_cache = {}
-
-local function get_character_part_addresses(character)
-    if not character then return nil end
-    local caddr = nil
-    pcall(function() caddr = character.address end)
-    if not caddr then return nil end
-    local cached = chams_part_cache[caddr]
-    if cached then return cached end
-    local addrs = {}
-    local parts = nil
-    pcall(function() parts = character:GetDescendantsOfClass("BasePart") end)
-    if parts then
-        for i = 1, #parts do
-            local a = nil
-            pcall(function() a = parts[i].address end)
-            if a then addrs[a] = true end
-        end
-    end
-    chams_part_cache[caddr] = addrs
-    return addrs
-end
-
-local function compute_visibility(target_pos, character)
-    if not target_pos then return true end
-    local hit, _, _, inst = raycast.Cast(
-        world.cam_x, world.cam_y, world.cam_z,
-        target_pos.x, target_pos.y, target_pos.z
-    )
-    if not hit or not inst then return true end
-    local addr_inst = nil
-    pcall(function() addr_inst = inst.address end)
-    if not addr_inst then return true end
-    local addrs = get_character_part_addresses(character)
-    if addrs and addrs[addr_inst] then return true end
-    return false
-end
-
-local function is_in_vis_fov(pos)
-    if not pos then return false end
-    local dx = pos.x - world.cam_x
-    local dy = pos.y - world.cam_y
-    local dz = pos.z - world.cam_z
-    local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
-    if dist < 1 then return true end
-    local lv = camera.get_look_vector()
-    if not lv then return true end
-    local nx, ny, nz = dx/dist, dy/dist, dz/dist
-    local dot = nx*lv.x + ny*lv.y + nz*lv.z
-    local fov = S.chams_vis_fov or 90
-    if fov >= 180 then return true end
-    local cos_half = math.cos(math.rad(fov * 0.5))
-    return dot >= cos_half
-end
-
-local function get_cached_visibility(addr, target_pos, character)
-    local now = utility.get_tick_count()
-    local c = chams_vis_cache[addr]
-    if c and (now - c.t) < CHAMS_VIS_CACHE_MS then
-        return c.visible
-    end
-    local visible = compute_visibility(target_pos, character)
-    chams_vis_cache[addr] = { visible = visible, t = now }
-    return visible
-end
-
 local function draw_target_hud()
     if not S.hud then return end
     local target = get_crosshair_player()
@@ -3506,7 +3508,27 @@ local function draw_target_hud()
     end
 end
 
+local chams_hook_active = false
+local last_chams_style = -1
+local chams_hull_cache = {}
+local chams_hull_cache_frame = -1
 local chams_cleanup_counter = 0
+
+local function get_cached_hulls(entity_obj)
+    local addr = nil
+    pcall(function() addr = entity_obj.address end)
+    if not addr then
+        local hulls = nil
+        pcall(function() hulls = draw.GetPlayerHulls(entity_obj) end)
+        return hulls
+    end
+    local c = chams_hull_cache[addr]
+    if c and c.frame == chams_hull_cache_frame then return c.hulls end
+    local hulls = nil
+    pcall(function() hulls = draw.GetPlayerHulls(entity_obj) end)
+    chams_hull_cache[addr] = { hulls = hulls, frame = chams_hull_cache_frame }
+    return hulls
+end
 
 local function draw_chams()
     if not S.chams then
@@ -3516,29 +3538,26 @@ local function draw_chams()
         end
         return
     end
+
     if S.chams_style ~= last_chams_style then
         pcall(function() exploits.SetChamsMode(S.chams_style) end)
         last_chams_style = S.chams_style
         chams_hook_active = true
     end
 
-    local want_visibility = S.chams_gradient == true
+    chams_hull_cache_frame = chams_hull_cache_frame + 1
 
     chams_cleanup_counter = chams_cleanup_counter + 1
-    if chams_cleanup_counter >= 300 then
+    if chams_cleanup_counter >= 120 then
         chams_cleanup_counter = 0
-        local now = utility.get_tick_count()
-        for k, v in pairs(chams_vis_cache) do
-            if now - v.t > 2000 then chams_vis_cache[k] = nil end
-        end
-        if next(chams_part_cache) then
+        if next(chams_hull_cache) then
             local keep = {}
             for i = 1, #cached_players_frame do
                 local p = cached_players_frame[i]
                 if p and p.character then
                     local a = nil
                     pcall(function() a = p.character.address end)
-                    if a and chams_part_cache[a] then keep[a] = chams_part_cache[a] end
+                    if a and chams_hull_cache[a] then keep[a] = chams_hull_cache[a] end
                 end
             end
             for i = 1, #npcs_cached do
@@ -3546,41 +3565,27 @@ local function draw_chams()
                 if n.model then
                     local a = nil
                     pcall(function() a = n.model.address end)
-                    if a and chams_part_cache[a] then keep[a] = chams_part_cache[a] end
+                    if a and chams_hull_cache[a] then keep[a] = chams_hull_cache[a] end
                 end
             end
-            chams_part_cache = keep
+            chams_hull_cache = keep
         end
     end
 
     if S.chams_players then
         local players = cached_players_frame
         local range_studs = S.player_range_studs
-        for i=1,#players do
+        for i = 1, #players do
             local p = players[i]
             if p and p.is_valid and p.is_alive and not p.is_local then
                 local pos = p.position
                 if pos then
-                    local dist = dist3(pos.x,pos.y,pos.z, world.cam_x,world.cam_y,world.cam_z)
-                    if dist <= range_studs then
-                        if want_visibility then
-                            local in_fov = is_in_vis_fov(pos)
-                            if in_fov then
-                                local addr = nil
-                                pcall(function() addr = p.character and p.character.address end)
-                                if addr then
-                                    local visible = get_cached_visibility(addr, pos, p.character)
-                                    local col = visible and S.chams_col or S.chams_col2
-                                    pcall(function() draw.ChamsPlayer(p, col, col, S.chams_style) end)
-                                else
-                                    pcall(function() draw.ChamsPlayer(p, S.chams_col, S.chams_col, S.chams_style) end)
-                                end
-                            else
-                                pcall(function() draw.ChamsPlayer(p, S.chams_col, S.chams_col, S.chams_style) end)
-                            end
-                        else
-                            pcall(function() draw.ChamsPlayer(p, S.chams_col, S.chams_style) end)
-                        end
+                    local dx = pos.x - world.cam_x
+                    local dy = pos.y - world.cam_y
+                    local dz = pos.z - world.cam_z
+                    local dist_sq = dx*dx + dy*dy + dz*dz
+                    if dist_sq <= range_studs * range_studs then
+                        pcall(function() draw.ChamsPlayer(p, S.chams_col, S.chams_style) end)
                     end
                 end
             end
@@ -3588,34 +3593,20 @@ local function draw_chams()
     end
 
     if S.chams_npcs then
-        for i=1,#npcs_cached do
+        local npc_range_sq = S.npc_range_studs * S.npc_range_studs
+        for i = 1, #npcs_cached do
             local n = npcs_cached[i]
             if n.model and n.hum and n.hum.health and n.hum.health > 0 then
                 local hpos = n.head and n.head.position
                 if hpos then
-                    local dist = dist3(hpos.x,hpos.y,hpos.z, world.cam_x,world.cam_y,world.cam_z)
-                    if dist <= S.npc_range_studs then
-                        local hulls = nil
-                        pcall(function() hulls = draw.GetPlayerHulls(n.model) end)
+                    local dx = hpos.x - world.cam_x
+                    local dy = hpos.y - world.cam_y
+                    local dz = hpos.z - world.cam_z
+                    local dist_sq = dx*dx + dy*dy + dz*dz
+                    if dist_sq <= npc_range_sq then
+                        local hulls = get_cached_hulls(n.model)
                         if hulls then
-                            if want_visibility then
-                                local in_fov = is_in_vis_fov(hpos)
-                                if in_fov then
-                                    local addr = nil
-                                    pcall(function() addr = n.model.address end)
-                                    if addr then
-                                        local visible = get_cached_visibility(addr, hpos, n.model)
-                                        local col = visible and S.chams_col or S.chams_col2
-                                        pcall(function() draw.Chams(hulls, col, col, S.chams_style) end)
-                                    else
-                                        pcall(function() draw.Chams(hulls, S.chams_col, S.chams_col, S.chams_style) end)
-                                    end
-                                else
-                                    pcall(function() draw.Chams(hulls, S.chams_col, S.chams_col, S.chams_style) end)
-                                end
-                            else
-                                pcall(function() draw.Chams(hulls, S.chams_col, S.chams_style) end)
-                            end
+                            pcall(function() draw.Chams(hulls, S.chams_col, S.chams_style) end)
                         end
                     end
                 end
@@ -3726,7 +3717,7 @@ local SAVE_ITEMS = {
     {"v4_car_enabled","bool"},{"v4_car_col","bool",true},{"v4_car_range","int"},
     {"v4_exit_enabled","bool"},{"v4_exit_col","bool",true},{"v4_exit_range","int"},
     {"v4_corpse_enabled","bool"},{"v4_corpse_name","bool",true},{"v4_corpse_dist","bool",true},
-    {"v4_corpse_marker","bool",true},{"v4_corpse_range","int"},
+    {"v4_corpse_marker","bool",true},{"v4_corpse_contents","bool"},{"v4_corpse_range","int"},
     {"v4_container_enabled","bool"},{"v4_container_col","bool",true},{"v4_container_range","int"},
     {"v4_container_contents","bool"},
     {"v4_quest_enabled","bool"},{"v4_quest_col","bool",true},{"v4_quest_range","int"},
@@ -3737,14 +3728,12 @@ local SAVE_ITEMS = {
     {"v4_loot_other","bool"},{"v4_loot_prefix","bool"},{"v4_loot_range","int"},
     {"v4_chams_enabled","bool"},{"v4_chams_style","int"},
     {"v4_chams_players","bool"},{"v4_chams_npcs","bool"},
-    {"v4_chams_gradient","bool"},{"v4_chams_vis_fov","int"},
     {"v4_boss_enabled","bool"},
     {"v4_lt_enabled","bool"},{"v4_lt_max","int"},{"v4_lt_far","int"},
     {"v4_aim_enabled","bool"},{"v4_aim_keybind","key"},
     {"v4_aim_target","int"},{"v4_aim_bone","int"},
     {"v4_aim_fov","int"},{"v4_aim_smooth","int"},
-    {"v4_aim_predict","bool"},{"v4_aim_predict_scale","int"},{"v4_aim_lead","bool"},
-    {"v4_aim_visible","bool"},{"v4_aim_draw_fov","bool"},{"v4_aim_lock","bool"},
+    {"v4_aim_predict","bool"},{"v4_aim_draw_fov","bool"},{"v4_aim_lock","bool"},
     {"v4_inv_enabled","bool"},{"v4_inv_keybind","key"},{"v4_inv_mode","int"},
     {"v4_inv_guns","bool"},{"v4_inv_max_guns","int"},
     {"v4_inv_armor","bool"},{"v4_inv_max_armor","int"},
@@ -3757,7 +3746,7 @@ local SAVE_ITEMS = {
     {"v4_hud_dist","bool"},{"v4_hud_icons","bool"},{"v4_hud_icon_size","int"},
     {"v4_hud_range","int"},{"v4_hud_offset_y","int"},
     {"v4_radar_enabled","bool"},{"v4_radar_size","int"},{"v4_radar_range","int"},{"v4_radar_rotate","bool"},
-    {"v4_hitmarker","bool"},{"v4_nograss","bool"},
+    {"v4_hitmarker","bool"},{"v4_nograss","bool"},{"v4_mod_hud","bool"},
     {"v4_ui_opacity","int"},{"v4_ui_border_glow","int"},{"v4_ui_w","int"},{"v4_ui_h","int"},
     {"v4_ui_toggle_key","key"},
 }
@@ -3855,6 +3844,7 @@ thread.create(scan_quests, 4000)
 thread.create(scan_claymores, 4000)
 thread.create(function() refresh_claymore_draw_cache() end, 80)
 thread.create(refresh_settings, 500)
+thread.create(update_mod_check, 2500)
 
 _G.on_frame = function()
     cached_players_frame = entity.get_players() or {}
@@ -3885,6 +3875,8 @@ _G.on_frame = function()
     if S.hitmarker then draw_hitmarker() end
     if S.nograss then apply_misc() end
 
+    if S.mod_hud then draw_mod_hud() end
+
     if not ui_blocking then
         if S.boss then draw_boss_tracker() end
         if S.lt then draw_loot_tracker() end
@@ -3912,6 +3904,7 @@ refresh_settings()
 load_config()
 refresh_loot_draw_cache()
 refresh_claymore_draw_cache()
+update_mod_check()
 
 local boot_toggle_key = m_key("v4_ui_toggle_key")
 if boot_toggle_key and boot_toggle_key ~= 0 then
