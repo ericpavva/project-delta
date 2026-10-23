@@ -14,6 +14,35 @@ _G.D.TEXT_W_CACHE = _G.D.TEXT_W_CACHE or {}
 _G.D.CACHE_OPS = 0
 _G.D.CACHE_MAX = 5000
 _G.D.EQUIP_CACHE = _G.D.EQUIP_CACHE or {}
+_G.D.RECOIL_ORIG = _G.D.RECOIL_ORIG or {}
+
+_G.D.T = _G.D.T or {}
+_G.D.T.fov_applied = false
+_G.D.T.last_fov = nil
+_G.D.T.fov_last_check = 0
+_G.D.T.hitmarker_time = 0
+_G.D.T.hitmarker_is_kill = false
+_G.D.T.hitmarker_is_head = false
+_G.D.T.hit_logs = {}
+_G.D.T.tracers = {}
+_G.D.T.last_lmb_state = false
+_G.D.T.last_ammo = nil
+_G.D.T.last_shot_time = 0
+_G.D.T.panic_held = false
+_G.D.T.panic_active = false
+_G.D.T.original_grass_length = nil
+
+_G.D.CH = _G.D.CH or {}
+_G.D.CH.suspects = {}
+_G.D.CH.tracker = {}
+_G.D.CH.longshots = {}
+
+_G.D.CUR = _G.D.CUR or {}
+_G.D.CUR.saved = false
+_G.D.CUR.cam_cf = nil
+_G.D.CUR.cam_type = nil
+_G.D.CUR.omi = nil
+
 _G.D.MOD_NAMES = _G.D.MOD_NAMES or {
 ["solter"]=true,["kupczakk"]=true,["nutsock112"]=true,["thecrafter103"]=true,
 ["forkycheck"]=true,["necanwx"]=true,["kbhgaming480"]=true,["lumivoxi"]=true,
@@ -26,7 +55,7 @@ _G.D.MOD_NAMES = _G.D.MOD_NAMES or {
 }
 _G.D.detected_mods = _G.D.detected_mods or {}
 
-local VERSION = "2.9.9"
+local VERSION = "3.0.1"
 
 local UI = {}
 UI.__index = UI
@@ -813,6 +842,90 @@ local function set_cursor_visible(visible)
     end)
 end
 
+local function set_cursor_unlocked_frozen(active)
+    local cur = _G.D.CUR
+    if active and not cur.saved then
+        cur.saved = true
+        pcall(function()
+            local cam = game.workspace and game.workspace.CurrentCamera
+            if cam then
+                cur.cam_cf = cam.CFrame
+                cur.cam_type = cam.CameraType
+            end
+            local lp = game.Players.LocalPlayer
+            if lp and lp.Character then
+                local omi = lp.Character:FindFirstChild("Override_MobileInput")
+                if omi then
+                    cur.omi = {}
+                    for _, ch in ipairs(omi:GetChildren()) do
+                        if ch:IsA("LocalScript") then
+                            cur.omi[#cur.omi+1] = {s = ch, e = ch.Disabled}
+                            ch.Disabled = true
+                        end
+                    end
+                end
+            end
+            local cas = game:GetService("ContextActionService")
+            if cas then
+                pcall(function()
+                    cas:BindActionAtPriority("DeltaMenuSink", function()
+                        return Enum.ContextActionResult.Sink
+                    end, false, 10000,
+                        Enum.UserInputType.MouseButton1,
+                        Enum.UserInputType.MouseButton2,
+                        Enum.UserInputType.MouseButton3,
+                        Enum.UserInputType.MouseMovement,
+                        Enum.UserInputType.MouseWheel)
+                    cas:BindActionAtPriority("DeltaMoveSink", function()
+                        return Enum.ContextActionResult.Sink
+                    end, false, 10000,
+                        Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
+                        Enum.KeyCode.Space, Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift)
+                end)
+            end
+            pcall(function()
+                local rs = game:GetService("RunService")
+                if rs then
+                    rs:BindToRenderStep("DeltaCamLock", Enum.RenderPriority.Camera.Value + 10, function()
+                        local cam = game.workspace and game.workspace.CurrentCamera
+                        if cam and cur.cam_cf then
+                            cam.CameraType = Enum.CameraType.Scriptable
+                            cam.CFrame = cur.cam_cf
+                        end
+                    end)
+                end
+            end)
+        end)
+    elseif not active and cur.saved then
+        cur.saved = false
+        pcall(function()
+            local cas = game:GetService("ContextActionService")
+            if cas then
+                pcall(function() cas:UnbindAction("DeltaMenuSink") end)
+                pcall(function() cas:UnbindAction("DeltaMoveSink") end)
+            end
+        end)
+        pcall(function()
+            local rs = game:GetService("RunService")
+            if rs then rs:UnbindFromRenderStep("DeltaCamLock") end
+        end)
+        if cur.omi then
+            for _, e in ipairs(cur.omi) do
+                pcall(function() if e.s and e.s.Parent then e.s.Disabled = e.e end end)
+            end
+            cur.omi = nil
+        end
+        pcall(function()
+            local cam = game.workspace and game.workspace.CurrentCamera
+            if cam and cur.cam_type then
+                cam.CameraType = cur.cam_type
+            end
+        end)
+        cur.cam_cf = nil
+        cur.cam_type = nil
+    end
+end
+
 local function process_toggle(self)
     local toggle_key = self.state.toggle_key
     if not toggle_key or toggle_key == 0 then
@@ -827,6 +940,7 @@ local function process_toggle(self)
     if kd and not _prev_toggle then
         self.state.open = not self.state.open
         set_cursor_visible(self.state.open)
+        set_cursor_unlocked_frozen(self.state.open)
     end
     _prev_toggle = kd
 end
@@ -946,6 +1060,7 @@ menu.add_checkbox("World", "ESP - Corpse", "v4_corpse_name", "Name", true, { par
 menu.add_checkbox("World", "ESP - Corpse", "v4_corpse_dist", "Distance", true, { parent = "v4_corpse_enabled", colorpicker = {0.7, 0.7, 0.7, 1} })
 menu.add_checkbox("World", "ESP - Corpse", "v4_corpse_marker", "Marker (X)", true, { parent = "v4_corpse_enabled", colorpicker = {1, 0, 0, 1} })
 menu.add_checkbox("World", "ESP - Corpse", "v4_corpse_contents", "Show Contents", false, { parent = "v4_corpse_enabled" })
+menu.add_checkbox("World", "ESP - Corpse", "v4_corpse_good_only", "Good Items Only", false, { parent = "v4_corpse_contents" })
 menu.add_slider_int("World", "ESP - Corpse", "v4_corpse_range", "Corpse Range (m)", 10, 600, 200, { parent = "v4_corpse_enabled" })
 
 menu.add_group("World", "ESP - Container")
@@ -953,6 +1068,7 @@ menu.add_checkbox("World", "ESP - Container", "v4_container_enabled", "=== CONTA
 menu.add_checkbox("World", "ESP - Container", "v4_container_col", "Color", true, { parent = "v4_container_enabled", colorpicker = {0.5, 0.5, 1, 1} })
 menu.add_slider_int("World", "ESP - Container", "v4_container_range", "Container Range (m)", 10, 600, 84, { parent = "v4_container_enabled" })
 menu.add_checkbox("World", "ESP - Container", "v4_container_contents", "Show Contents", false, { parent = "v4_container_enabled" })
+menu.add_combo("World", "ESP - Container", "v4_container_filter", "Filter", { "All", "OP Loot Only" }, 0, { parent = "v4_container_contents" })
 
 menu.add_group("World", "ESP - Quest")
 menu.add_checkbox("World", "ESP - Quest", "v4_quest_enabled", "=== QUEST === Enable Quest ESP", false)
@@ -972,6 +1088,20 @@ menu.add_checkbox("Visuals", "Chams", "v4_chams_players", "Players", true, { par
 menu.add_checkbox("Visuals", "Chams", "v4_chams_npcs", "NPCs", true, { parent = "v4_chams_enabled" })
 menu.add_colorpicker("Visuals", "Chams", "v4_chams_color", "Chams Color", {0, 1, 0, 1})
 
+menu.add_group("Visuals", "Crosshair")
+menu.add_checkbox("Visuals", "Crosshair", "v4_crosshair_enabled", "=== CROSSHAIR === Enable Crosshair", false)
+menu.add_combo("Visuals", "Crosshair", "v4_crosshair_style", "Style", {
+    "Classic Cross", "Center Dot", "Circle Outline", "T-Shape", "Chevron", "Circle + Cross"
+}, 0, { parent = "v4_crosshair_enabled" })
+menu.add_slider_int("Visuals", "Crosshair", "v4_crosshair_size", "Size", 2, 30, 8, { parent = "v4_crosshair_enabled" })
+menu.add_slider_int("Visuals", "Crosshair", "v4_crosshair_gap", "Gap", 0, 20, 3, { parent = "v4_crosshair_enabled" })
+menu.add_slider_int("Visuals", "Crosshair", "v4_crosshair_thick", "Thickness", 1, 6, 2, { parent = "v4_crosshair_enabled" })
+menu.add_checkbox("Visuals", "Crosshair", "v4_crosshair_spin", "Spin", false, { parent = "v4_crosshair_enabled" })
+menu.add_slider_int("Visuals", "Crosshair", "v4_crosshair_spin_spd", "Spin Speed", 1, 20, 5, { parent = "v4_crosshair_spin" })
+menu.add_checkbox("Visuals", "Crosshair", "v4_crosshair_pulse", "Pulse", false, { parent = "v4_crosshair_enabled" })
+menu.add_slider_int("Visuals", "Crosshair", "v4_crosshair_pulse_spd", "Pulse Speed", 1, 20, 4, { parent = "v4_crosshair_pulse" })
+menu.add_colorpicker("Visuals", "Crosshair", "v4_crosshair_color", "Color", {0.25, 0.95, 0.35, 1})
+
 menu.add_group("World", "Boss Tracker")
 menu.add_checkbox("World", "Boss Tracker", "v4_boss_enabled", "Enable Boss Tracker", false)
 
@@ -983,13 +1113,20 @@ menu.add_slider_int("Visuals", "Loot Tracker", "v4_lt_far", "Too Far Threshold (
 menu.add_group("Aimbot", "Aimbot")
 menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_enabled", "Enable Aimbot", false)
 menu.add_hotkey("Aimbot", "Aimbot", "v4_aim_keybind", "Aim Key", 0x02, { parent = "v4_aim_enabled" })
+menu.add_hotkey("Aimbot", "Aimbot", "v4_aim_npc_keybind", "NPC Aim Key", 0x02, { parent = "v4_aim_enabled" })
 menu.add_combo("Aimbot", "Aimbot", "v4_aim_target", "Target", { "Players + NPCs", "Players Only", "NPCs Only" }, 0, { parent = "v4_aim_enabled" })
 menu.add_combo("Aimbot", "Aimbot", "v4_aim_bone", "Bone", { "Head", "UpperTorso", "LowerTorso" }, 0, { parent = "v4_aim_enabled" })
 menu.add_slider_int("Aimbot", "Aimbot", "v4_aim_fov", "FOV", 10, 800, 150, { parent = "v4_aim_enabled" })
 menu.add_slider_int("Aimbot", "Aimbot", "v4_aim_smooth", "Smooth", 1, 20, 4, { parent = "v4_aim_enabled" })
 menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_predict", "Ballistic Prediction", true, { parent = "v4_aim_enabled" })
+menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_lead", "Velocity Lead", true, { parent = "v4_aim_enabled" })
 menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_draw_fov", "Draw FOV Circle", true, { parent = "v4_aim_enabled" })
+menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_fov_filled", "Filled FOV Circle", false, { parent = "v4_aim_enabled" })
 menu.add_checkbox("Aimbot", "Aimbot", "v4_aim_lock", "Target Lock (Sticky)", false, { parent = "v4_aim_enabled" })
+
+menu.add_group("Aimbot", "No Recoil")
+menu.add_checkbox("Aimbot", "No Recoil", "v4_no_recoil", "Enable No Recoil", false)
+menu.add_slider_int("Aimbot", "No Recoil", "v4_recoil_reduction", "Recoil Reduction (%)", 0, 100, 70, { parent = "v4_no_recoil" })
 
 menu.add_group("Aimbot", "Inventory Checker")
 menu.add_checkbox("Aimbot", "Inventory Checker", "v4_inv_enabled", "Enable Inventory Checker", false)
@@ -1031,11 +1168,27 @@ menu.add_checkbox("Visuals", "Radar", "v4_radar_rotate", "Rotate with camera", t
 
 menu.add_group("Misc", "Misc")
 menu.add_checkbox("Misc", "Misc", "v4_hitmarker", "Hitmarker", true)
+menu.add_checkbox("Misc", "Misc", "v4_hit_logs", "Hit Logs", false)
+menu.add_slider_int("Misc", "Misc", "v4_hit_log_duration", "Hit Log Duration (s)", 1, 10, 4, { parent = "v4_hit_logs" })
+menu.add_checkbox("Misc", "Misc", "v4_tracers", "Bullet Tracers", false)
+menu.add_colorpicker("Misc", "Misc", "v4_tracer_color", "Tracer Color", {0.25, 0.65, 1.0, 1.0})
+menu.add_slider_float("Misc", "Misc", "v4_tracer_duration", "Tracer Duration (s)", 0.2, 5.0, 1.0, "%.1f", { parent = "v4_tracers" })
+menu.add_checkbox("Misc", "Misc", "v4_fov_changer", "FOV Changer", false)
+menu.add_slider_int("Misc", "Misc", "v4_fov_value", "FOV Value", 70, 110, 90, { parent = "v4_fov_changer" })
+menu.add_checkbox("Misc", "Misc", "v4_fov_sniper_safe", "Preserve Sniper Zoom (<35°)", true, { parent = "v4_fov_changer" })
 menu.add_checkbox("Misc", "Misc", "v4_nograss", "No Grass", false)
 menu.add_checkbox("Misc", "Misc", "v4_mod_hud", "Mod Detector HUD", true)
 
+menu.add_group("Misc", "Cheater Finder")
+menu.add_checkbox("Misc", "Cheater Finder", "v4_cheater_finder", "Enable Cheater Finder", false)
+menu.add_slider_int("Misc", "Cheater Finder", "v4_cheater_age", "Account Age Threshold (days)", 0, 365, 30, { parent = "v4_cheater_finder" })
+menu.add_slider_int("Misc", "Cheater Finder", "v4_cheater_speed", "Max Speed Threshold (studs/s)", 20, 100, 35, { parent = "v4_cheater_finder" })
+
+menu.add_group("Config", "Keys")
+menu.add_hotkey("Config", "Keys", "v4_ui_toggle_key", "Menu Toggle Key", 0x2D)
+menu.add_hotkey("Config", "Keys", "v4_panic_key", "Panic Key", 0x23)
+
 menu.add_group("Config", "UI - Colors")
-menu.add_hotkey("Config", "UI - Colors", "v4_ui_toggle_key", "Menu Toggle Key", 0x2D)
 menu.add_colorpicker("Config", "UI - Colors", "v4_ui_accent", "Accent Color", {0.25, 0.60, 1.00, 1.00})
 menu.add_slider_int("Config", "UI - Colors", "v4_ui_opacity", "UI Opacity (%)", 30, 100, 96)
 menu.add_slider_int("Config", "UI - Colors", "v4_ui_border_glow", "Border Glow (%)", 0, 200, 100)
@@ -1299,17 +1452,12 @@ local quest_points = {}
 local claymore_points = {}
 local boss_cached = { estonia = {}, city13 = {} }
 local cached_players_frame = {}
-local original_grass_length = nil
-
-local CAR_NAMES = {
-    "uaz", "vaz", "vaz2108", "vaz-2108", "niva", "lada", "kamaz", "gaz", "zil",
-    "truck", "jeep", "vehicle"
-}
 
 local function is_car_name(name)
     if not name then return false end
     local n = name:lower()
-    for _, k in ipairs(CAR_NAMES) do
+    local cars = {"uaz","vaz","vaz2108","niva","lada","kamaz","gaz","zil","truck","jeep","vehicle","car","buggy","btr","tank","boat","sedan","suv","motorcycle","bike","quad","atv","heli","helicopter","plane","bmp","tigr","ural","tractor","van","bus","apc","carspawner"}
+    for _, k in ipairs(cars) do
         if n:find(k, 1, true) then return true end
     end
     return false
@@ -1353,8 +1501,7 @@ local function is_interactive_car(model, children)
         local c = children[i]
         if c then
             local ccn = c.class_name
-            if ccn == "VehicleSeat" or ccn == "Seat" then
-                has_seat = true
+            if ccn == "VehicleSeat" or ccn == "Seat" then                has_seat = true
             else
                 local cn = c.name
                 if cn then
@@ -1779,6 +1926,7 @@ local function refresh_settings()
     S.corpse_marker   = m_get("v4_corpse_marker")
     S.corpse_marker_col = m_col("v4_corpse_marker")
     S.corpse_contents = m_get("v4_corpse_contents")
+    S.corpse_good_only = m_get("v4_corpse_good_only")
     S.corpse_range    = m_get("v4_corpse_range") or 200
     S.corpse_range_studs = S.corpse_range * STUDS_PER_M
     S.container       = m_get("v4_container_enabled")
@@ -1786,6 +1934,7 @@ local function refresh_settings()
     S.container_range = m_get("v4_container_range") or 84
     S.container_range_studs = S.container_range * STUDS_PER_M
     S.container_contents = m_get("v4_container_contents")
+    S.container_filter = m_get("v4_container_filter") or 0
     S.quest           = m_get("v4_quest_enabled")
     S.quest_col       = m_col("v4_quest_col")
     S.quest_range     = m_get("v4_quest_range") or 140
@@ -1808,6 +1957,8 @@ local function refresh_settings()
     S.aim             = m_get("v4_aim_enabled")
     S.aim_key         = m_key("v4_aim_keybind")
     if S.aim_key == 0 then S.aim_key = 0x02 end
+    S.aim_npc_key     = m_key("v4_aim_npc_keybind")
+    if S.aim_npc_key == 0 then S.aim_npc_key = 0x02 end
     S.aim_target      = m_get("v4_aim_target") or 0
     local ab = m_get("v4_aim_bone")
     if type(ab) == "number" then S.aim_bone = ab else S.aim_bone = 0 end
@@ -1817,7 +1968,10 @@ local function refresh_settings()
     S.aim_predict_scale = 1.2
     S.aim_lead        = true
     S.aim_draw_fov    = m_get("v4_aim_draw_fov")
+    S.aim_fov_filled  = m_get("v4_aim_fov_filled")
     S.aim_lock        = m_get("v4_aim_lock")
+    S.no_recoil       = m_get("v4_no_recoil")
+    S.recoil_reduction = m_get("v4_recoil_reduction") or 70
     S.inv             = m_get("v4_inv_enabled")
     S.inv_key         = m_key("v4_inv_keybind")
     if S.inv_key == 0 then S.inv_key = 0x02 end
@@ -1854,8 +2008,30 @@ local function refresh_settings()
     S.radar_range_studs = S.radar_range * STUDS_PER_M
     S.radar_rotate    = m_get("v4_radar_rotate")
     S.hitmarker       = m_get("v4_hitmarker")
+    S.hit_logs        = m_get("v4_hit_logs")
+    S.hit_log_duration = m_get("v4_hit_log_duration") or 4
+    S.tracers         = m_get("v4_tracers")
+    S.tracer_color    = m_col("v4_tracer_color")
+    S.tracer_duration = m_get("v4_tracer_duration") or 1.0
+    S.fov_changer     = m_get("v4_fov_changer")
+    S.fov_value       = m_get("v4_fov_value") or 90
+    S.fov_sniper_safe = m_get("v4_fov_sniper_safe")
     S.nograss         = m_get("v4_nograss")
     S.mod_hud         = m_get("v4_mod_hud")
+    S.cheater_finder  = m_get("v4_cheater_finder")
+    S.cheater_age     = m_get("v4_cheater_age") or 30
+    S.cheater_speed   = m_get("v4_cheater_speed") or 35
+    S.crosshair       = m_get("v4_crosshair_enabled")
+    S.crosshair_style = m_get("v4_crosshair_style") or 0
+    S.crosshair_size  = m_get("v4_crosshair_size") or 8
+    S.crosshair_gap   = m_get("v4_crosshair_gap") or 3
+    S.crosshair_thick = m_get("v4_crosshair_thick") or 2
+    S.crosshair_spin  = m_get("v4_crosshair_spin")
+    S.crosshair_spin_spd = m_get("v4_crosshair_spin_spd") or 5
+    S.crosshair_pulse = m_get("v4_crosshair_pulse")
+    S.crosshair_pulse_spd = m_get("v4_crosshair_pulse_spd") or 4
+    S.crosshair_color = m_col("v4_crosshair_color")
+    S.panic_key       = m_key("v4_panic_key")
 end
 
 local LOOT_CATEGORIES = {
@@ -1985,6 +2161,53 @@ local function categorize(name)
     _G.D.CATEGORY_CACHE[name] = result
     maybe_reset_caches()
     return result
+end
+
+local OP_LOOT_SET = {
+    GPU=true, CPU=true, SSD=true, RAM=true, HDD=true,
+    Gold50g=true, GoldSkull=true, GoldWatch=true, GoldenTicket=true,
+    SolterStatue=true, CatToken=true, Matryoshka=true, Teapot=true,
+    WeddingRing=true, InflatedCrown=true, MikeShades=true, ThermalModule=true,
+    Reapir=true, Defib=true, PortableConsole=true, Smartphone=true, Radio=true,
+    RedCard=true, BlueCard=true, OrangeCard=true,
+    EVACKey=true, FactoryGarageKey=true, FrigateKey=true, LighthouseKey=true,
+    PoolKey=true, AirfieldTunnelsKey=true, GallerySecurityKey=true, CraneKey=true,
+    HydroBasementKey=true, DormA211Key=true, DormB203Key=true, B05Key=true,
+    ATCKey=true, Apartment13Key=true, Apartment21Key=true, CitySubstationtKey=true,
+    FuelingStationKey=true, VillageKey=true, Villa1Key=true,
+    SerumGreen=true, SerumPurple=true, SerumRed=true, SerumYellow=true,
+    ImmunsterReactor=true,
+    AKM=true, AKMN=true, PKM=true, AsVal=true, FAL=true,
+    M4=true, SVD=true, Mosin=true, R700=true, RPG7=true,
+    Groza=true, MP5SD=true, Saiga12=true, ADAR15=true, FlareGun=true, SPSh44=true,
+    Altyn=true, AltynVisor=true, ScavKingHelmet=true, ScavKingVest=true,
+    ["6B43"]=true, IOTV4=true, DozerArmor=true, FastMT=true, FastVisor=true,
+    MaskaVisor=true, QuadNVG=true, TitanShield=true, HSPV=true, DAGR=true,
+    AnarchyTomahawk=true, ButterflyKnife=true, Cutlass=true, FlipKnifeShark=true,
+    Greatsword=true, IceAxe=true, IceDagger=true, Karambit=true, Kukri=true,
+    Longsword=true, M9Fade=true, M9XR7=true, PlasmaNinjato=true, Scythe=true,
+    GoldenDV2=true, RealGoldenDV2=true, GoldenMakarov=true,
+    AntonPlush=true, DozerPlush=true, EnzoPlush=true, WhisperPlush=true,
+}
+
+local function is_op_loot(name)
+    if not name or name == "" then return false end
+    local base = name:match("^(.-)%s*x%d+$") or name
+    return OP_LOOT_SET[base] == true
+end
+
+local function is_good_item(name)
+    if not name or name == "" then return false end
+    local base = name:match("^(.-)%s*x%d+$") or name
+    if OP_LOOT_SET[base] then return true end
+    local low = base:lower()
+    if low:find("key") or low:find("card") or low:find("plush")
+        or low:find("dagr") or low:find("gold") or low:find("ticket") or low:find("gpu")
+        or low:find("serum") or low:find("statue") or low:find("replica")
+        or low:find("nvg") or low:find("scope") or low:find("suppressor") then
+        return true
+    end
+    return false
 end
 
 local CLOTHING_SLOT_TO_CAT = {
@@ -2322,11 +2545,23 @@ local function draw_corpse_esp()
                             y_off = y_off + 13
                         end
                         if S.corpse_contents and d.contents then
-                            for j=1,#d.contents do
-                                local itxt = d.contents[j]
-                                local itw = draw.get_text_size(itxt, 11)
-                                draw.text(sx - itw*0.5, y_off, itxt, {0.75,0.75,0.80,1}, 11)
-                                y_off = y_off + 12
+                            local show = true
+                            local items = d.contents
+                            if S.corpse_good_only then
+                                local filtered = {}
+                                for j=1,#items do
+                                    if is_good_item(items[j]) then filtered[#filtered+1] = items[j] end
+                                end
+                                items = filtered
+                                show = #items > 0
+                            end
+                            if show then
+                                for j=1,#items do
+                                    local itxt = items[j]
+                                    local itw = draw.get_text_size(itxt, 11)
+                                    draw.text(sx - itw*0.5, y_off, itxt, {0.75,0.75,0.80,1}, 11)
+                                    y_off = y_off + 12
+                                end
                             end
                         end
                     end
@@ -2364,12 +2599,24 @@ local function draw_container_esp()
                         local tw = draw.get_text_size(txt, 13)
                         draw.text(sx - tw*0.5, sy, txt, S.container_col, 13)
                         if S.container_contents and entry.contents then
-                            local ly = sy + 14
-                            for j=1,#entry.contents do
-                                local itxt = entry.contents[j]
-                                local itw = draw.get_text_size(itxt, 11)
-                                draw.text(sx - itw*0.5, ly, itxt, {0.7,0.7,0.7,1}, 11)
-                                ly = ly + 12
+                            local show = true
+                            local items = entry.contents
+                            if S.container_filter == 1 then
+                                local filtered = {}
+                                for j=1,#items do
+                                    if is_op_loot(items[j]) then filtered[#filtered+1] = items[j] end
+                                end
+                                items = filtered
+                                show = #items > 0
+                            end
+                            if show then
+                                local ly = sy + 14
+                                for j=1,#items do
+                                    local itxt = items[j]
+                                    local itw = draw.get_text_size(itxt, 11)
+                                    draw.text(sx - itw*0.5, ly, itxt, {0.7,0.7,0.7,1}, 11)
+                                    ly = ly + 12
+                                end
                             end
                         end
                     end
@@ -2555,7 +2802,6 @@ local function draw_mod_hud()
     draw.rect(x, y, w, h, col, 4, 1.5)
     draw.text(x + pad_x, y + pad_y, txt, col, fs)
 end
-
 local lt_panel = { x = 30, y = 700, w = 280, dragging = false, drag_ox = 0, drag_oy = 0 }
 local LT_TITLE_H = 22
 local LT_PAD     = 8
@@ -3023,6 +3269,9 @@ local function run_aimbot()
     end
     local scx, scy = input.get_screen_center()
     if S.aim_draw_fov then
+        if S.aim_fov_filled then
+            draw.circle_filled(scx, scy, S.aim_fov, {1,1,1,0.10}, 64)
+        end
         draw.circle(scx, scy, S.aim_fov, {1,1,1,0.35}, 64, 1)
     end
     local key_down_aim = input.is_key_down(S.aim_key)
@@ -3616,7 +3865,6 @@ local function draw_chams()
 end
 
 local RADAR_POS = { x = 20, y = 100 }
-local hitmarker_time = 0
 
 local function draw_radar()
     if not S.radar then return end
@@ -3678,34 +3926,562 @@ local function draw_radar()
     end
 end
 
-local function draw_hitmarker()
-    if not S.hitmarker then return end
-    if not S.aim or not input.is_key_down(S.aim_key) then return end
-    local scx, scy = input.get_screen_center()
-    if aim_target_ent then hitmarker_time = utility.get_time() end
-    if utility.get_time() - hitmarker_time < 0.15 then
-        local col = {1,1,1,0.9}
-        local off = 8
-        draw.line(scx-off, scy-off, scx-off*0.5, scy-off*0.5, col, 1.5)
-        draw.line(scx+off, scy-off, scx+off*0.5, scy-off*0.5, col, 1.5)
-        draw.line(scx-off, scy+off, scx-off*0.5, scy+off*0.5, col, 1.5)
-        draw.line(scx+off, scy+off, scx+off*0.5, scy+off*0.5, col, 1.5)
+local function rot_line(cx, cy, x1, y1, x2, y2, ang, col, th)
+    if ang == 0 then
+        draw.line(cx + x1, cy + y1, cx + x2, cy + y2, col, th)
+    else
+        local c = math.cos(ang)
+        local s = math.sin(ang)
+        local rx1 = x1 * c - y1 * s
+        local ry1 = x1 * s + y1 * c
+        local rx2 = x2 * c - y2 * s
+        local ry2 = x2 * s + y2 * c
+        draw.line(cx + rx1, cy + ry1, cx + rx2, cy + ry2, col, th)
+    end
+end
+
+local function draw_crosshair()
+    if not S.crosshair then return end
+    local cx, cy = input.get_screen_center()
+    local sz = S.crosshair_size or 8
+    local gap = S.crosshair_gap or 3
+    local th = S.crosshair_thick or 2
+    local col = S.crosshair_color or {0.25, 0.95, 0.35, 1}
+    local now = utility.get_time()
+    local pulse = 0
+    if S.crosshair_pulse then
+        pulse = math.sin(now * (S.crosshair_pulse_spd or 4)) * (sz * 0.35)
+    end
+    sz = math.max(2, sz + pulse)
+    gap = math.max(0, gap + (pulse * 0.5))
+    local angle = 0
+    if S.crosshair_spin then
+        angle = (now * (S.crosshair_spin_spd or 5)) % (math.pi * 2)
+    end
+    local style = S.crosshair_style or 0
+    if style == 0 then
+        rot_line(cx, cy, 0, -gap, 0, -gap - sz, angle, col, th)
+        rot_line(cx, cy, 0, gap, 0, gap + sz, angle, col, th)
+        rot_line(cx, cy, -gap, 0, -gap - sz, 0, angle, col, th)
+        rot_line(cx, cy, gap, 0, gap + sz, 0, angle, col, th)
+    elseif style == 1 then
+        draw.circle_filled(cx, cy, math.max(1.5, sz * 0.35), col, 16)
+    elseif style == 2 then
+        draw.circle(cx, cy, sz, col, 32)
+        if gap > 1 then
+            draw.circle_filled(cx, cy, 1.5, col, 8)
+        end
+    elseif style == 3 then
+        rot_line(cx, cy, -gap, 0, -gap - sz, 0, angle, col, th)
+        rot_line(cx, cy, gap, 0, gap + sz, 0, angle, col, th)
+        rot_line(cx, cy, 0, gap, 0, gap + sz, angle, col, th)
+    elseif style == 4 then
+        rot_line(cx, cy, -sz, sz * 0.5, 0, -sz * 0.3, angle, col, th)
+        rot_line(cx, cy, 0, -sz * 0.3, sz, sz * 0.5, angle, col, th)
+    elseif style == 5 then
+        draw.circle_filled(cx, cy, 1.5, col, 8)
+        local g = gap + 3
+        rot_line(cx, cy, 0, -g, 0, -g - sz, angle, col, th)
+        rot_line(cx, cy, 0, g, 0, g + sz, angle, col, th)
+        rot_line(cx, cy, -g, 0, -g - sz, 0, angle, col, th)
+        rot_line(cx, cy, g, 0, g + sz, 0, angle, col, th)
     end
 end
 
 local function apply_misc()
     if S.nograss then
-        if original_grass_length == nil then
+        if _G.D.T.original_grass_length == nil then
             local ok, v = pcall(function() return terrain.GetGrassLength() end)
-            if ok and v then original_grass_length = v end
+            if ok and v then _G.D.T.original_grass_length = v end
         end
         pcall(function() terrain.SetGrassLength(-1) end)
         pcall(function() terrain.SetGrassLength(0) end)
     else
-        if original_grass_length ~= nil then
-            pcall(function() terrain.SetGrassLength(original_grass_length) end)
+        if _G.D.T.original_grass_length ~= nil then
+            pcall(function() terrain.SetGrassLength(_G.D.T.original_grass_length) end)
         end
     end
+end
+
+local function run_fov_changer()
+    local T = _G.D.T
+    if not S.fov_changer then
+        if T.fov_applied then
+            pcall(function() camera.SetFov(math.rad(70)) end)
+            T.fov_applied = false
+            T.last_fov = nil
+        end
+        return
+    end
+    local now = utility.get_tick_count()
+    if T.fov_last_check and (now - T.fov_last_check) < 500 then return end
+    T.fov_last_check = now
+    if S.fov_sniper_safe then
+        local ok_g, cur = pcall(function() return camera.GetFov() end)
+        if ok_g and cur then
+            local deg_f = math.deg(cur)
+            if deg_f < 35 then return end
+        end
+    end
+    local target = S.fov_value or 90
+    if T.last_fov and math.abs(T.last_fov - target) < 0.5 then return end
+    T.last_fov = target
+    T.fov_applied = true
+    pcall(function() camera.SetFov(math.rad(target)) end)
+end
+
+local function apply_recoil()
+    local rep = game.replicated_storage
+    if not rep then return end
+    local weapons = rep:find_first_child("RangedWeapons")
+    if not weapons then return end
+    local pct = 1.0 - (S.recoil_reduction or 70) / 100
+    local list = weapons:get_children() or {}
+    for i=1,#list do
+        local weapon = list[i]
+        if weapon then
+            local pat = weapon:find_first_child("RecoilPattern")
+            if pat then
+                local patterns = pat:get_children()
+                if patterns then
+                    for j=1,#patterns do
+                        local pat_data = patterns[j]
+                        local vals = pat_data:get_children()
+                        if vals then
+                            for k=1,#vals do
+                                local v = vals[k]
+                                if v and v.value ~= nil then
+                                    local a = v.address or tostring(v)
+                                    if not _G.D.RECOIL_ORIG[a] then
+                                        _G.D.RECOIL_ORIG[a] = v.value
+                                    end
+                                    pcall(function() v.value = _G.D.RECOIL_ORIG[a] * pct end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function restore_recoil()
+    local rep = game.replicated_storage
+    if not rep then return end
+    local weapons = rep:find_first_child("RangedWeapons")
+    if not weapons then return end
+    local list = weapons:get_children() or {}
+    for i=1,#list do
+        local weapon = list[i]
+        if weapon then
+            local pat = weapon:find_first_child("RecoilPattern")
+            if pat then
+                local patterns = pat:get_children()
+                if patterns then
+                    for j=1,#patterns do
+                        local pat_data = patterns[j]
+                        local vals = pat_data:get_children()
+                        if vals then
+                            for k=1,#vals do
+                                local v = vals[k]
+                                if v and v.value ~= nil then
+                                    local a = v.address or tostring(v)
+                                    if _G.D.RECOIL_ORIG[a] ~= nil then
+                                        pcall(function() v.value = _G.D.RECOIL_ORIG[a] end)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function get_local_ammo()
+    local ok, val = pcall(function()
+        local rep = game.replicated_storage
+        local lp = entity.get_local_player()
+        if not rep or not lp then return nil end
+        local pdata = rep:find_first_child("Players")
+        if not pdata then return nil end
+        local me = pdata:find_first_child(lp.name)
+        if not me then return nil end
+        local status = me:find_first_child("Status")
+        if not status then return nil end
+        local gv = status:find_first_child("GameplayVariables")
+        if not gv then return nil end
+        local eq = gv:find_first_child("EquippedTool")
+        if not eq or not eq.value then return nil end
+        local item = eq.value
+        local props = item:find_first_child("ItemProperties") or item
+        local loaded = props:find_first_child("LoadedAmmo")
+        if not loaded then return nil end
+        local ch = loaded:get_children()
+        return ch and #ch or nil
+    end)
+    return ok and val or nil
+end
+
+local function get_gun_muzzle_pos()
+    local ws = game.workspace
+    local cam = ws and (ws.CurrentCamera or ws:FindFirstChildOfClass("Camera"))
+    local vm = (cam and cam:find_first_child("ViewModel")) or (ws and ws:find_first_child("ViewModel"))
+    if vm then
+        local item = vm:find_first_child("Item") or vm
+        if item then
+            local ch = item:get_children()
+            if ch then
+                for i=1,#ch do
+                    local c = ch[i]
+                    if c and c:is_a("BasePart") then
+                        local cl = (c.name or ""):lower()
+                        if cl:find("muzzle") or cl:find("barrel") or cl:find("flash") then
+                            return c.position
+                        end
+                    end
+                end
+            end
+        end
+    end
+    local lp = entity.get_local_player()
+    local ch = lp and lp.character
+    if ch then
+        local h = ch:find_first_child("RightHand") or ch:find_first_child("RightUpperArm")
+        if h and h.position then
+            return h.position
+        end
+    end
+    return camera.get_position()
+end
+
+local function check_combat_hits()
+    if not S.hitmarker and not S.hit_logs and not S.tracers then return end
+    local T = _G.D.T
+    local now = utility.get_time()
+    local lmb = input.is_key_down(0x01)
+    local is_click = lmb and not T.last_lmb_state
+    T.last_lmb_state = lmb
+    local ammo = get_local_ammo()
+    local did_fire = false
+    if lmb and ammo ~= nil then
+        if T.last_ammo ~= nil and ammo < T.last_ammo then
+            did_fire = true
+        elseif is_click and ammo > 0 then
+            did_fire = true
+        end
+        T.last_ammo = ammo
+    elseif is_click then
+        did_fire = true
+    end
+    if did_fire then
+        T.last_shot_time = now
+    end
+    if now - T.last_shot_time > 1.25 then return end
+    local players = cached_players_frame
+    if not players then return end
+    for i=1,#players do
+        local p = players[i]
+        if p and p.is_valid and p.is_alive and not p.is_local then
+            local key = p.user_id or p.name
+            local hp_key = "HP_" .. tostring(key)
+            local old_hp = _G.D[hp_key]
+            local cur_hp = p.health
+            if old_hp and cur_hp and cur_hp < old_hp then
+                local dmg = math.floor(old_hp - cur_hp + 0.5)
+                local is_kill = cur_hp <= 0
+                if S.hitmarker then
+                    T.hitmarker_time = now
+                    T.hitmarker_is_kill = is_kill
+                    T.hitmarker_is_head = dmg >= 55
+                end
+                if S.hit_logs then
+                    local ts = os.date("%H:%M:%S")
+                    local line = "[" .. ts .. "] Hit " .. (p.name or "?") .. " -" .. dmg .. " HP" .. (is_kill and " [KILL]" or "")
+                    table.insert(T.hit_logs, {txt = line, t = now, dur = S.hit_log_duration or 4})
+                    if #T.hit_logs > 8 then table.remove(T.hit_logs, 1) end
+                end
+                if S.tracers then
+                    local from = get_gun_muzzle_pos()
+                    local to = p.head_position or p.position
+                    if from and to then
+                        table.insert(T.tracers, {from = from, to = to, t = now})
+                        if #T.tracers > 20 then table.remove(T.tracers, 1) end
+                    end
+                end
+            end
+            _G.D[hp_key] = cur_hp
+        end
+    end
+end
+
+local function draw_hitmarker()
+    if not S.hitmarker then return end
+    local T = _G.D.T
+    local elapsed = utility.get_time() - T.hitmarker_time
+    if elapsed >= 0.55 or elapsed < 0 then return end
+    local alpha = math.max(0, 1 - (elapsed / 0.55))
+    local cx, cy = input.get_screen_center()
+    local s = 11
+    local gap = 3
+    local col = T.hitmarker_is_kill and {1.0, 0.22, 0.22, alpha} or {1.0, 1.0, 1.0, alpha}
+    local sh = {0, 0, 0, alpha * 0.9}
+    draw.line(cx - s, cy - s, cx - gap, cy - gap, sh, 3.5)
+    draw.line(cx + gap, cy + gap, cx + s, cy + s, sh, 3.5)
+    draw.line(cx + s, cy - s, cx + gap, cy - gap, sh, 3.5)
+    draw.line(cx - gap, cy + gap, cx - s, cy + s, sh, 3.5)
+    draw.line(cx - s, cy - s, cx - gap, cy - gap, col, 2.0)
+    draw.line(cx + gap, cy + gap, cx + s, cy + s, col, 2.0)
+    draw.line(cx + s, cy - s, cx + gap, cy - gap, col, 2.0)
+    draw.line(cx - gap, cy + gap, cx - s, cy + s, col, 2.0)
+end
+
+local function draw_hit_logs()
+    if not S.hit_logs then return end
+    local T = _G.D.T
+    if #T.hit_logs == 0 then return end
+    local now = utility.get_time()
+    local cx, cy = input.get_screen_center()
+    local y = cy + 45
+    local i = 1
+    while i <= #T.hit_logs do
+        local l = T.hit_logs[i]
+        if now - l.t >= l.dur then
+            table.remove(T.hit_logs, i)
+        else
+            local a = math.max(0, 1 - (now - l.t) / l.dur)
+            local tw = draw.get_text_size(l.txt, 12)
+            local lx = cx - tw * 0.5
+            local ly = y + (i - 1) * 20
+            draw.rect_filled(lx - 8, ly - 2, tw + 16, 18, {0.04, 0.04, 0.06, a * 0.88}, 3)
+            draw.text(lx, ly, l.txt, {0.55, 0.9, 1.0, a}, 12)
+            i = i + 1
+        end
+    end
+end
+
+local function draw_tracers()
+    if not S.tracers then return end
+    local T = _G.D.T
+    if #T.tracers == 0 then return end
+    local now = utility.get_time()
+    local dur = S.tracer_duration or 1.0
+    local col = S.tracer_color or {0.25, 0.65, 1.0, 1.0}
+    local i = 1
+    while i <= #T.tracers do
+        local t = T.tracers[i]
+        local age = now - t.t
+        if age >= dur then
+            table.remove(T.tracers, i)
+        else
+            local a = math.max(0, 1 - age / dur)
+            local sx1, sy1, v1 = draw.world_to_screen(t.from.x, t.from.y, t.from.z)
+            local sx2, sy2, v2 = draw.world_to_screen(t.to.x, t.to.y, t.to.z)
+            if v1 and v2 then
+                draw.line(sx1, sy1, sx2, sy2, {col[1], col[2], col[3], a * 0.9}, 2)
+                draw.line(sx1, sy1, sx2, sy2, {1, 1, 1, a}, 1)
+            end
+            i = i + 1
+        end
+    end
+end
+
+local function parse_longshot(msg)
+    if not msg or type(msg) ~= "string" or msg == "" then return end
+    local low = msg:lower()
+    if not (low:find("kill") or low:find("elim") or low:find("shot") or low:find("from") or low:find("%d+m") or low:find("m%]")) then return end
+    local dist = nil
+    for d in msg:gmatch("(%d+)%s*[mM]") do
+        local n = tonumber(d)
+        if n and n >= 100 and (not dist or n > dist) then dist = n end
+    end
+    if not dist then
+        for d in msg:gmatch("(%d+)%s*meters") do
+            local n = tonumber(d)
+            if n and n >= 100 and (not dist or n > dist) then dist = n end
+        end
+    end
+    if dist then
+        local players = entity.get_players()
+        if players then
+            for i=1,#players do
+                local p = players[i]
+                if p and p.name and msg:find(p.name, 1, true) then
+                    _G.D.CH.longshots[p.name] = (_G.D.CH.longshots[p.name] or 0) + 1
+                    break
+                end
+            end
+        end
+    end
+end
+
+local function update_cheater_finder()
+    local CH = _G.D.CH
+    if not S.cheater_finder then CH.suspects = {} return end
+    local suspects = {}
+    local players = entity.get_players()
+    if not players then return end
+    local lp = entity.get_local_player()
+    local lp_name = lp and lp.name or ""
+    local rep = game.replicated_storage
+    local rp = rep and rep:find_first_child("Players")
+    for i=1,#players do
+        local p = players[i]
+        if p and not p.is_local and p.is_alive and p.name ~= lp_name then
+            local flags = 0
+            local acct_age = -1
+            pcall(function()
+                local pl = game:get_service("Players") and game.get_service("Players"):FindFirstChild(p.name)
+                if pl and pl.AccountAge then acct_age = pl.AccountAge end
+            end)
+            if acct_age >= 0 and acct_age < (S.cheater_age or 30) then flags = flags + 1 end
+            local tr = CH.tracker[p.name]
+            local max_spd = tr and tr.max_spd or 0
+            if max_spd >= (S.cheater_speed or 35) then flags = flags + 2 end
+            local ls = CH.longshots[p.name] or 0
+            if ls >= 3 then flags = flags + 1 end
+            if ls >= 5 then flags = flags + 1 end
+            local kd = 0
+            if rp then
+                local data = rp:find_first_child(p.name)
+                local st = data and data:find_first_child("Status")
+                local jn = st and st:find_first_child("Journey")
+                local ws = jn and jn:find_first_child("WipeStatistics")
+                if ws then
+                    local pk = ws:find_first_child("PVPKills")
+                    local pd = ws:find_first_child("Deaths")
+                    local k = pk and pk.value and tonumber(pk.value) or 0
+                    local d = pd and pd.value and tonumber(pd.value) or 0
+                    if k > 0 or d > 0 then kd = k / math.max(1, d) end
+                end
+            end
+            if flags > 0 then
+                suspects[#suspects+1] = {
+                    name = p.name, acct_age = acct_age, kd = kd,
+                    max_spd = max_spd, ls_kills = ls, flags = flags,
+                }
+            end
+        end
+    end
+    table.sort(suspects, function(a, b) return a.flags > b.flags end)
+    CH.suspects = suspects
+end
+
+local function update_hacker_detector()
+    if not S.cheater_finder then return end
+    local CH = _G.D.CH
+    local now = utility.get_time()
+    for i=1,#cached_players_frame do
+        local p = cached_players_frame[i]
+        if p and not p.is_local and p.is_alive and p.position then
+            local d = CH.tracker[p.name]
+            if not d then
+                CH.tracker[p.name] = {pos = p.position, time = now, h_since = nil, max_spd = 0}
+            else
+                local dt = now - d.time
+                if dt >= 0.25 then
+                    local dx = p.position.x - d.pos.x
+                    local dz = p.position.z - d.pos.z
+                    local dist_h = math.sqrt(dx*dx + dz*dz)
+                    if dist_h < 65 then
+                        local spd = dist_h / dt
+                        if spd > d.max_spd then d.max_spd = spd end
+                    end
+                    d.pos = p.position
+                    d.time = now
+                end
+            end
+        end
+    end
+end
+
+local function draw_cheater_panel()
+    local CH = _G.D.CH
+    if not CH.panel then CH.panel = { x = 320, y = 120, dragging = false, drag_ox = 0, drag_oy = 0 } end
+    local panel = CH.panel
+    if not S.cheater_finder or #CH.suspects == 0 then panel.dragging = false return end
+    local pw = 320
+    local TH = 24
+    local PAD = 8
+    local row_h = 36
+    local count = math.min(8, #CH.suspects)
+    local ph = TH + PAD + count * (row_h + 4) + 4
+    local mx, my = utility.get_mouse_pos()
+    local lmb = input.is_key_down(0x01)
+    if lmb then
+        if not panel.dragging then
+            if mx >= panel.x and mx <= panel.x + pw and my >= panel.y and my <= panel.y + TH then
+                panel.dragging = true
+                panel.drag_ox = mx - panel.x
+                panel.drag_oy = my - panel.y
+            end
+        else
+            panel.x = mx - panel.drag_ox
+            panel.y = my - panel.drag_oy
+        end
+    else panel.dragging = false end
+    local px, py = panel.x, panel.y
+    draw.rect_filled(px, py, pw, ph, {0.05, 0.05, 0.07, 0.95}, 4)
+    draw.rect_filled(px, py, pw, TH, {0.07, 0.07, 0.10, 1}, 4)
+    draw.rect_filled(px, py, 2, TH, {1, 0.3, 0.3, 1}, 0)
+    draw.rect(px, py, pw, ph, {0.6, 0.15, 0.15, 0.7}, 4, 1)
+    draw.text(px + PAD, py + 5, "CHEATER FINDER [" .. count .. "]", {1, 0.3, 0.3, 1}, 13)
+    local hint = "drag ::"
+    local hw = draw.get_text_size(hint, 10)
+    draw.text(px + pw - hw - PAD, py + 6, hint, {0.4, 0.4, 0.5, 0.8}, 10)
+    local ly = py + TH + PAD
+    for i=1,count do
+        local s = CH.suspects[i]
+        local ry = ly + (i - 1) * (row_h + 4)
+        local rw = pw - PAD * 2
+        local rx = px + PAD
+        local bg = s.flags >= 2 and {0.24, 0.05, 0.05, 0.75} or {0.18, 0.10, 0.04, 0.70}
+        draw.rect_filled(rx, ry, rw, row_h, bg, 3)
+        local name_col = s.flags >= 3 and {1.0, 0.25, 0.25, 1} or (s.flags >= 1 and {1.0, 0.75, 0.2, 1} or {0.3, 0.95, 0.45, 1})
+        draw.text(rx + 6, ry + 3, s.name, name_col, 11)
+        local parts = {}
+        if s.acct_age >= 0 then
+            local age = s.acct_age < 365 and (s.acct_age .. "d") or string.format("%.1fy", s.acct_age / 365)
+            parts[#parts+1] = "Acct:" .. age
+        end
+        if s.kd > 0 then parts[#parts+1] = string.format("KD:%.1f", s.kd) end
+        if s.max_spd > 0 then parts[#parts+1] = string.format("%ds/s", math.floor(s.max_spd)) end
+        if s.ls_kills > 0 then parts[#parts+1] = "LS:" .. s.ls_kills end
+        draw.text(rx + 6, ry + 17, table.concat(parts, " | "), {1.0, 0.65, 0.25, 0.9}, 9)
+        local badge_txt = s.flags >= 3 and ("CHEATER (" .. s.flags .. ")") or (s.flags >= 1 and ("SUS (" .. s.flags .. ")") or "CLEAN")
+        local bw = draw.get_text_size(badge_txt, 10)
+        draw.text(rx + rw - bw - 8, ry + 3, badge_txt, name_col, 10)
+    end
+end
+
+local function do_panic()
+    local T = _G.D.T
+    T.panic_active = not T.panic_active
+    if T.panic_active then
+        restore_recoil()
+        if T.fov_applied then
+            pcall(function() camera.SetFov(math.rad(70)) end)
+            T.fov_applied = false
+            T.last_fov = nil
+        end
+        if chams_hook_active then
+            pcall(function() exploits.RevertChams() end)
+            chams_hook_active = false
+        end
+    else
+        if S.no_recoil then apply_recoil() end
+        if S.fov_changer then T.last_fov = nil end
+        if S.chams then last_chams_style = -1 end
+    end
+end
+
+local function draw_panic_hint()
+    local T = _G.D.T
+    if not T.panic_active then return end
+    local sw, sh = draw.get_screen_size()
+    draw.text(sw * 0.5 - 60, 20, "[ PANIC ACTIVE ]", {1, 0.2, 0.2, 1}, 16)
 end
 
 local SAVE_ITEMS = {
@@ -3717,9 +4493,9 @@ local SAVE_ITEMS = {
     {"v4_car_enabled","bool"},{"v4_car_col","bool",true},{"v4_car_range","int"},
     {"v4_exit_enabled","bool"},{"v4_exit_col","bool",true},{"v4_exit_range","int"},
     {"v4_corpse_enabled","bool"},{"v4_corpse_name","bool",true},{"v4_corpse_dist","bool",true},
-    {"v4_corpse_marker","bool",true},{"v4_corpse_contents","bool"},{"v4_corpse_range","int"},
+    {"v4_corpse_marker","bool",true},{"v4_corpse_contents","bool"},{"v4_corpse_good_only","bool"},{"v4_corpse_range","int"},
     {"v4_container_enabled","bool"},{"v4_container_col","bool",true},{"v4_container_range","int"},
-    {"v4_container_contents","bool"},
+    {"v4_container_contents","bool"},{"v4_container_filter","int"},
     {"v4_quest_enabled","bool"},{"v4_quest_col","bool",true},{"v4_quest_range","int"},
     {"v4_claymore_enabled","bool"},{"v4_claymore_col","bool",true},{"v4_claymore_range","int"},
     {"v4_claymore_names","bool"},
@@ -3730,10 +4506,12 @@ local SAVE_ITEMS = {
     {"v4_chams_players","bool"},{"v4_chams_npcs","bool"},
     {"v4_boss_enabled","bool"},
     {"v4_lt_enabled","bool"},{"v4_lt_max","int"},{"v4_lt_far","int"},
-    {"v4_aim_enabled","bool"},{"v4_aim_keybind","key"},
+    {"v4_aim_enabled","bool"},{"v4_aim_keybind","key"},{"v4_aim_npc_keybind","key"},
     {"v4_aim_target","int"},{"v4_aim_bone","int"},
     {"v4_aim_fov","int"},{"v4_aim_smooth","int"},
-    {"v4_aim_predict","bool"},{"v4_aim_draw_fov","bool"},{"v4_aim_lock","bool"},
+    {"v4_aim_predict","bool"},{"v4_aim_lead","bool"},{"v4_aim_draw_fov","bool"},
+    {"v4_aim_fov_filled","bool"},{"v4_aim_lock","bool"},
+    {"v4_no_recoil","bool"},{"v4_recoil_reduction","int"},
     {"v4_inv_enabled","bool"},{"v4_inv_keybind","key"},{"v4_inv_mode","int"},
     {"v4_inv_guns","bool"},{"v4_inv_max_guns","int"},
     {"v4_inv_armor","bool"},{"v4_inv_max_armor","int"},
@@ -3746,9 +4524,18 @@ local SAVE_ITEMS = {
     {"v4_hud_dist","bool"},{"v4_hud_icons","bool"},{"v4_hud_icon_size","int"},
     {"v4_hud_range","int"},{"v4_hud_offset_y","int"},
     {"v4_radar_enabled","bool"},{"v4_radar_size","int"},{"v4_radar_range","int"},{"v4_radar_rotate","bool"},
-    {"v4_hitmarker","bool"},{"v4_nograss","bool"},{"v4_mod_hud","bool"},
+    {"v4_hitmarker","bool"},{"v4_hit_logs","bool"},{"v4_hit_log_duration","int"},
+    {"v4_tracers","bool"},{"v4_tracer_color","bool",true},{"v4_tracer_duration","float"},
+    {"v4_fov_changer","bool"},{"v4_fov_value","int"},{"v4_fov_sniper_safe","bool"},
+    {"v4_nograss","bool"},{"v4_mod_hud","bool"},
+    {"v4_cheater_finder","bool"},{"v4_cheater_age","int"},{"v4_cheater_speed","int"},
+    {"v4_crosshair_enabled","bool"},{"v4_crosshair_style","int"},
+    {"v4_crosshair_size","int"},{"v4_crosshair_gap","int"},{"v4_crosshair_thick","int"},
+    {"v4_crosshair_spin","bool"},{"v4_crosshair_spin_spd","int"},
+    {"v4_crosshair_pulse","bool"},{"v4_crosshair_pulse_spd","int"},
+    {"v4_crosshair_color","bool",true},
     {"v4_ui_opacity","int"},{"v4_ui_border_glow","int"},{"v4_ui_w","int"},{"v4_ui_h","int"},
-    {"v4_ui_toggle_key","key"},
+    {"v4_ui_toggle_key","key"},{"v4_panic_key","key"},
 }
 
 local function save_config()
@@ -3762,6 +4549,8 @@ local function save_config()
             local id = item[1]
             if item[2] == "key" then
                 f:write(id .. "_key=" .. tostring(m_key(id)) .. "\n")
+            elseif item[2] == "float" then
+                f:write(id .. "=" .. tostring(tonumber(m_get(id)) or 0) .. "\n")
             else
                 local val = m_get(id)
                 if item[2] == "bool" then f:write(id .. "=" .. (val and "1" or "0") .. "\n")
@@ -3845,8 +4634,56 @@ thread.create(scan_claymores, 4000)
 thread.create(function() refresh_claymore_draw_cache() end, 80)
 thread.create(refresh_settings, 500)
 thread.create(update_mod_check, 2500)
+thread.create(update_cheater_finder, 500)
+thread.create(function()
+    if not S.no_recoil then return end
+    apply_recoil()
+end, 2000)
+
+pcall(function()
+    local rep = game.replicated_storage
+    local remotes = rep and rep:find_first_child("Remotes")
+    if remotes then
+        local s_msg = remotes:find_first_child("ServerMessage")
+        if s_msg and s_msg.on_client_event then
+            pcall(function()
+                s_msg.on_client_event:connect(function(msg)
+                    if type(msg) == "string" then parse_longshot(msg) end
+                end)
+            end)
+        end
+        local n_msg = remotes:find_first_child("NotificationMessage")
+        if n_msg and n_msg.on_client_event then
+            pcall(function()
+                n_msg.on_client_event:connect(function(msg)
+                    if type(msg) == "string" then parse_longshot(msg) end
+                end)
+            end)
+        end
+    end
+end)
+pcall(function()
+    local logs = game:get_service("LogService")
+    if logs and logs.MessageOut then
+        logs.MessageOut:Connect(function(msg)
+            parse_longshot(msg)
+        end)
+    end
+end)
 
 _G.on_frame = function()
+    local T = _G.D.T
+    if S.panic_key and S.panic_key ~= 0 then
+        local kd = key_down(S.panic_key)
+        if kd and not T.panic_held then
+            T.panic_held = true
+            do_panic()
+        elseif not kd then
+            T.panic_held = false
+        end
+    end
+    if T.panic_active then return end
+
     cached_players_frame = entity.get_players() or {}
     update_camera()
 
@@ -3872,10 +4709,19 @@ _G.on_frame = function()
     if S.chams then draw_chams() end
     if S.aim then run_aimbot() end
     if S.radar then draw_radar() end
-    if S.hitmarker then draw_hitmarker() end
+    if S.crosshair then draw_crosshair() end
     if S.nograss then apply_misc() end
 
+    run_fov_changer()
+    check_combat_hits()
+    if S.hitmarker then draw_hitmarker() end
+    if S.hit_logs then draw_hit_logs() end
+    if S.tracers then draw_tracers() end
+    if S.cheater_finder then update_hacker_detector() end
+    if S.cheater_finder then draw_cheater_panel() end
+
     if S.mod_hud then draw_mod_hud() end
+    draw_panic_hint()
 
     if not ui_blocking then
         if S.boss then draw_boss_tracker() end
@@ -3913,6 +4759,7 @@ end
 
 if base_ui.state.open then
     set_cursor_visible(true)
+    set_cursor_unlocked_frozen(true)
 end
 
 print("[Delta V2] v" .. VERSION .. " loaded.")
